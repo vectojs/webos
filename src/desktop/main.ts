@@ -171,6 +171,11 @@ const catcher = new DesktopClickCatcher(
     if (final) marquee.opacity = 0;
     scene.markDirty();
   },
+  (x, y) => {
+    const tb = shell.taskbar;
+    if (!tb) return false;
+    return x >= tb.x && x <= tb.x + tb.width && y >= tb.y && y <= tb.y + tb.height;
+  },
 );
 // The catcher is the empty-desktop pointer surface, so its a11y mirror must be
 // the BOTTOM-most mirror: added before the shell mounts anything, so every

@@ -261,6 +261,7 @@ export class DesktopClickCatcher extends Entity {
   constructor(
     private readonly onEmptyClick: () => void,
     private readonly onMarquee: (rect: MarqueeRect, final: boolean) => void,
+    private readonly isExcluded?: (x: number, y: number) => boolean,
   ) {
     super();
     this.interactive = true;
@@ -268,6 +269,10 @@ export class DesktopClickCatcher extends Entity {
     this.a11yFullViewport = true;
     this.on('pointerdown', (e) => {
       const p = this.point(e);
+      // Taskbar areas without their own mirrors (the empty strip between
+      // entries) fall through to the catcher; a desktop marquee must not
+      // start there.
+      if (this.isExcluded?.(p.x, p.y)) return;
       this.dragging = true;
       this.moved = false;
       this.startX = p.x;
