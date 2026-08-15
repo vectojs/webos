@@ -1,51 +1,86 @@
 /**
  * Calculator app — CalculatorModel from `model/` drives the display; mouse
  * and keyboard input (scoped to the focused window) both work.
+ *
+ * The keypad is a manually laid-out 4-column grid that fills the client
+ * width and reflows on window resize (ui Stack lays out once, so it cannot
+ * express "stretch to fill the row" for late-sized buttons).
  */
 
+import type { IRenderer } from '@vectojs/core';
+import { Entity } from '@vectojs/core';
 import type { AppContext, AppDefinition } from '@vectojs/desktop';
-import { Text } from '@vectojs/ui';
-import { btn, ClientRoot, hstack, vstack } from '../app/ui-helpers';
+import { Button, Text } from '@vectojs/ui';
+import { btn } from '../app/ui-helpers';
 import { isWindowFocused } from '../app/window-utils';
 import { CalculatorModel, type CalcOp } from '../model/calculator';
 
 const OP_KEYS = ['÷', '×', '-', '+'];
+const PAD = 16;
+const GAP = 6;
+const BTN_H = 32;
+const DISPLAY_H = 36;
 
-class CalculatorRoot extends ClientRoot {
+class CalculatorRoot extends Entity {
   private readonly model = new CalculatorModel();
   private readonly displayLabel: Text;
+  private readonly rows: Button[][] = [];
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
 
   constructor() {
-    const display = new Text('0', {
+    super();
+    this.clipChildren = true;
+
+    this.displayLabel = new Text('0', {
       font: '700 24px "Segoe UI", system-ui, sans-serif',
       color: '#0f172a',
     });
-    display.height = 36;
+    this.displayLabel.height = DISPLAY_H;
+    this.displayLabel.interactive = false;
+    this.add(this.displayLabel);
 
-    const row = (labels: string[]) =>
-      hstack(
-        labels.map((lbl) => {
-          const isOp = OP_KEYS.includes(lbl) || lbl === '=';
-          return btn(lbl, isOp, () => this.handleKey(lbl));
-        }),
-        6,
-      );
+    const grid = [
+      ['C', 'CE', '←', '÷'],
+      ['7', '8', '9', '×'],
+      ['4', '5', '6', '-'],
+      ['1', '2', '3', '+'],
+      ['±', '0', '.', '='],
+    ];
+    for (const labels of grid) {
+      const buttons = labels.map((lbl) => {
+        const isOp = OP_KEYS.includes(lbl) || lbl === '=';
+        const b = btn(lbl, isOp, () => this.handleKey(lbl));
+        b.height = BTN_H;
+        return b;
+      });
+      this.rows.push(buttons);
+      for (const b of buttons) this.add(b);
+    }
+  }
 
-    const stack = vstack(
-      [
-        display,
-        row(['C', 'CE', '←', '÷']),
-        row(['7', '8', '9', '×']),
-        row(['4', '5', '6', '-']),
-        row(['1', '2', '3', '+']),
-        row(['±', '0', '.', '=']),
-      ],
-      8,
-    );
+  public override isPointInside(gx: number, gy: number): boolean {
+    const local = this.worldToLocal(gx, gy);
+    if (!local) return false;
+    return local.x >= 0 && local.y >= 0 && local.x <= this.width && local.y <= this.height;
+  }
 
-    super(stack, 16);
-    this.displayLabel = display;
+  public override render(_r: IRenderer): void {
+    const w = Math.max(0, this.width - PAD * 2);
+    // Right-aligned display (ui Text has no align option).
+    this.displayLabel.x = PAD + Math.max(0, w - this.displayLabel.width);
+    this.displayLabel.y = PAD;
+    const btnW = Math.max(40, (w - 3 * GAP) / 4);
+    let y = PAD + DISPLAY_H + 8;
+    for (const row of this.rows) {
+      let x = PAD;
+      for (const b of row) {
+        b.x = x;
+        b.y = y;
+        b.width = btnW;
+        x += btnW + GAP;
+      }
+      y += BTN_H + 8;
+    }
   }
 
   protected override onMounted(): void {

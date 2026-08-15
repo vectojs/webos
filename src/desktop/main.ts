@@ -6,7 +6,7 @@ import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
 import { buildConfig, svgDataUrl } from '../config';
 import { findPreset } from '../model/themes';
-import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS } from './icons';
+import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
@@ -98,11 +98,15 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
   lastSceneH = newH;
 }
 
+let iconsReady = false;
+
 function fit(): void {
   const vp = viewportCssSize();
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
   recenterWindowsPreservingOffset(vp.w, vp.h);
+  // fit() runs before the icon grid exists at boot (TDZ guard).
+  if (iconsReady) layoutIcons();
 }
 
 // One resize path: visualViewport covers browser zoom and window resize;
@@ -146,29 +150,80 @@ scene.start();
 
 // ------------------------------------------------------------- desktop icons
 
-const catcher = new DesktopClickCatcher(() => {
-  for (const icon of desktopIcons) icon.setSelected(false);
-});
-catcher.width = 1;
-catcher.height = 1;
+const desktopIcons: DesktopIcon[] = [];
+
+const marquee = new MarqueeSelection();
+const catcher = new DesktopClickCatcher(
+  () => {
+    for (const icon of desktopIcons) icon.setSelected(false);
+  },
+  (rect, final) => {
+    marquee.opacity = 1;
+    marquee.x = rect.x;
+    marquee.y = rect.y;
+    marquee.width = rect.w;
+    marquee.height = rect.h;
+    for (const icon of desktopIcons) {
+      const hit =
+        icon.x + icon.width > rect.x &&
+        icon.x < rect.x + rect.w &&
+        icon.y + icon.height > rect.y &&
+        icon.y < rect.y + rect.h;
+      icon.setSelected(hit);
+    }
+    if (final) marquee.opacity = 0;
+    scene.markDirty();
+  },
+);
+marquee.width = 1;
+marquee.height = 1;
 scene.add(catcher);
 
-const desktopIcons: DesktopIcon[] = [];
 const startX = 14;
 const startY = 14;
 const colGap = 80;
 const rowGap = 80;
-const itemsPerCol = 6;
+/** Never taller than the usable desktop — no icon may overlap the taskbar. */
+const maxItemsPerCol = 6;
 
-DESKTOP_ICON_SPECS.forEach((spec, index) => {
-  const icon = new DesktopIcon(spec.appId, spec.label, (id) => shell.open(id));
-  const row = index % itemsPerCol;
-  const col = Math.floor(index / itemsPerCol);
-  icon.x = startX + col * colGap;
-  icon.y = startY + row * rowGap;
+/**
+ * Re-flow the icon grid against the current scene height: the column height
+ * is capped so the last row stays clear of the taskbar at any viewport size
+ * (a large DPR / browser zoom shrinks the CSS viewport and would otherwise
+ * push the tail of a fixed 6-per-column list into the taskbar).
+ */
+function layoutIcons(): void {
+  const taskbarH = shell.taskbar ? shell.taskbar.height : 40;
+  const usableH = Math.max(120, scene.height - taskbarH - 16);
+  const perCol = Math.max(1, Math.min(maxItemsPerCol, Math.floor((usableH - startY) / rowGap)));
+  desktopIcons.forEach((icon, index) => {
+    const row = index % perCol;
+    const col = Math.floor(index / perCol);
+    icon.x = startX + col * colGap;
+    icon.y = startY + row * rowGap;
+  });
+}
+
+DESKTOP_ICON_SPECS.forEach((spec) => {
+  const icon = new DesktopIcon(
+    spec.appId,
+    spec.label,
+    (id) => shell.open(id),
+    (target, toggle) => {
+      if (toggle) {
+        target.setSelected(!target.isSelected());
+      } else {
+        for (const other of desktopIcons) other.setSelected(other === target);
+      }
+    },
+  );
   desktopIcons.push(icon);
   scene.add(icon);
 });
+layoutIcons();
+iconsReady = true;
+
+scene.add(marquee);
 
 // --------------------------------------------------------------- seed + open
 

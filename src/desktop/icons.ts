@@ -127,6 +127,7 @@ export class DesktopIcon extends Entity {
     public readonly appId: string,
     label: string,
     private readonly onLaunch: (appId: string) => void,
+    private readonly onSelect: (icon: DesktopIcon, toggle: boolean) => void,
   ) {
     super();
     this.width = 76;
@@ -160,14 +161,15 @@ export class DesktopIcon extends Entity {
     });
     this.on('pointerdown', (e) => {
       e.stopPropagation?.();
+      const native = e.nativeEvent as PointerEvent | undefined;
+      const toggle = !!(native && (native.ctrlKey || native.metaKey));
       const now = Date.now();
       if (now - this.lastClickTime < 350) {
         this.onLaunch(this.appId);
-        this.selected = false;
         this.lastClickTime = 0;
       } else {
         this.lastClickTime = now;
-        this.selected = true;
+        this.onSelect(this, toggle);
       }
       this.scene?.markDirty();
     });
@@ -178,6 +180,10 @@ export class DesktopIcon extends Entity {
       this.selected = selected;
       this.scene?.markDirty();
     }
+  }
+
+  public isSelected(): boolean {
+    return this.selected;
   }
 
   public override isPointInside(gx: number, gy: number): boolean {
@@ -206,13 +212,90 @@ export class DesktopIcon extends Entity {
   }
 }
 
-/** Invisible full-desktop surface below the icons; clears selection on empty-area clicks. */
+/**
+ * Windows-style marquee: translucent selection rectangle drawn during a
+ * left-button drag on empty desktop.
+ */
+export class MarqueeSelection extends Entity {
+  constructor() {
+    super();
+    this.interactive = false;
+    this.a11yProjection = 'never';
+    this.opacity = 0;
+  }
+
+  public override isPointInside(): boolean {
+    return false;
+  }
+
+  public override render(r: IRenderer): void {
+    r.beginPath();
+    r.roundRect(0, 0, this.width, this.height, 2);
+    r.fill('rgba(56, 189, 248, 0.15)');
+    r.stroke('rgba(56, 189, 248, 0.9)', 1);
+  }
+}
+
+export interface MarqueeRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Full-desktop pointer surface below the icons.
+ *
+ * The engine routes mouse input ONLY through a11y mirror elements (the canvas
+ * itself has no pointerdown listeners — forge finding `core-a11y-and-input.md`
+ * 2026-08-15), so this MUST project a mirror: `a11yFullViewport` +
+ * role-less `tabIndex: -1` keeps it AT-invisible while pointer-visible, and
+ * icon mirrors drawn above it keep their own clicks (topmost hit).
+ */
 export class DesktopClickCatcher extends Entity {
-  constructor(private readonly onEmptyClick: () => void) {
+  private dragging = false;
+  private moved = false;
+  private startX = 0;
+  private startY = 0;
+
+  constructor(
+    private readonly onEmptyClick: () => void,
+    private readonly onMarquee: (rect: MarqueeRect, final: boolean) => void,
+  ) {
     super();
     this.interactive = true;
-    this.a11yProjection = 'never';
-    this.on('pointerdown', () => this.onEmptyClick());
+    this.a11yProjection = 'eager';
+    this.a11yFullViewport = true;
+    this.on('pointerdown', (e) => {
+      const p = this.point(e);
+      this.dragging = true;
+      this.moved = false;
+      this.startX = p.x;
+      this.startY = p.y;
+    });
+    this.on('pointermove', (e) => {
+      if (!this.dragging) return;
+      const p = this.point(e);
+      const dx = p.x - this.startX;
+      const dy = p.y - this.startY;
+      if (!this.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      this.moved = true;
+      this.onMarquee(this.rect(p.x, p.y), false);
+    });
+    this.on('pointerup', (e) => {
+      if (!this.dragging) return;
+      this.dragging = false;
+      if (!this.moved) {
+        this.onEmptyClick();
+        return;
+      }
+      const p = this.point(e);
+      this.onMarquee(this.rect(p.x, p.y), true);
+    });
+  }
+
+  public override getA11yAttributes() {
+    return { tabIndex: -1 };
   }
 
   public override isPointInside(): boolean {
@@ -220,6 +303,26 @@ export class DesktopClickCatcher extends Entity {
   }
 
   public override render(_r: IRenderer): void {}
+
+  private point(e: { nativeEvent?: unknown }): { x: number; y: number } {
+    const native = e.nativeEvent as PointerEvent | undefined;
+    const scene = this.scene;
+    if (native && scene) {
+      return scene.clientToScene(native.clientX, native.clientY);
+    }
+    return { x: this.startX, y: this.startY };
+  }
+
+  private rect(px: number, py: number): MarqueeRect {
+    const x = Math.min(this.startX, px);
+    const y = Math.min(this.startY, py);
+    return {
+      x,
+      y,
+      w: Math.abs(px - this.startX),
+      h: Math.abs(py - this.startY),
+    };
+  }
 }
 
 function fallbackSvg(emoji: string): string {

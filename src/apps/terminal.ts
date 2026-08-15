@@ -10,10 +10,29 @@ import { isWindowFocused, isWindowVisible } from '../app/window-utils';
 import { executeCommand, trimHistory } from '../model/terminal';
 
 const PROMPT = 'user@vectojs:~$ ';
-/** Approximate advance of the 12px monospace prompt (12 chars ≈ 86px). */
-const PROMPT_WIDTH = 86;
-/** 12px monospace advance per character. */
-const CHAR_WIDTH = 7.2;
+const FONT = '12px "Consolas", "Fira Code", monospace';
+/** Fallback monospace advance when no measuring context exists (0.6em at 12px). */
+const FALLBACK_CHAR_WIDTH = 7.2;
+/** Caret top offset from the text baseline for a 12px monospace line (~ascent). */
+const CARET_ASCENT = 11;
+
+/** Measure one monospace advance from a throwaway canvas; null when unavailable. */
+function measureAdvance(sample: string): number | null {
+  try {
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.font = FONT;
+    return ctx.measureText(sample).width / sample.length;
+  } catch {
+    return null;
+  }
+}
+
+const CHAR_WIDTH = measureAdvance('0123456789abcdefghijklmnopqrstuvwxyz') ?? FALLBACK_CHAR_WIDTH;
+const promptMeasured = measureAdvance(PROMPT);
+const PROMPT_WIDTH =
+  promptMeasured !== null ? promptMeasured * PROMPT.length : PROMPT.length * CHAR_WIDTH;
 
 export interface TerminalAppOptions {
   onTheme: (id: string) => void;
@@ -130,9 +149,11 @@ class TerminalRoot extends Entity {
     r.roundRect(0, 0, this.width, this.height, 0);
     r.fill('#0c1017');
 
-    const font = '12px "Consolas", "Fira Code", monospace';
+    const font = FONT;
     const lineHeight = 16;
-    let y = 10;
+    // fillText's y is the BASELINE (the renderer never sets textBaseline):
+    // start the first baseline below the top so glyphs are not clipped.
+    let y = 10 + CARET_ASCENT;
     const maxVisibleLines = Math.floor((this.height - 30) / lineHeight);
     const visible = this.history.slice(-maxVisibleLines);
 
@@ -145,13 +166,13 @@ class TerminalRoot extends Entity {
     r.fillText(PROMPT, 12, y, font, '#22c55e');
     r.fillText(this.currentInput, 12 + PROMPT_WIDTH, y, font, '#ffffff');
 
-    // Blinking caret — monospace advance needs no measuring context
-    // (IRenderer deliberately has none; the app owns its font).
+    // Blinking caret — sits ON the text line: baseline-derived top, monospace
+    // advance for the x (IRenderer deliberately has no measureText).
     if (Math.floor(Date.now() / 500) % 2 === 0) {
       const before = this.currentInput.slice(0, this.cursorPos);
       const caretX = 12 + PROMPT_WIDTH + before.length * CHAR_WIDTH;
       r.beginPath();
-      r.roundRect(caretX, y, 7, 13, 0);
+      r.roundRect(caretX, y - CARET_ASCENT, 7, 14, 0);
       r.fill('#38bdf8');
     }
   }
