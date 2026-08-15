@@ -54,7 +54,13 @@ function viewportCssSize(): { w: number; h: number } {
 let lastSceneW = 0;
 let lastSceneH = 0;
 
-/** Keep windows offset from the scene center across zoom/resize refits. */
+/**
+ * Keep windows offset from the scene center across zoom refits — and only
+ * those. A zoom preserves the aspect ratio; a plain browser resize or the
+ * early viewport settle does not, and shifting windows on those (measured:
+ * the settle resize moved every boot window by +349,+129px) reads as broken
+ * positioning.
+ */
 function recenterWindowsPreservingOffset(newW: number, newH: number): void {
   if (lastSceneW <= 0 || lastSceneH <= 0) {
     lastSceneW = newW;
@@ -62,6 +68,13 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
     return;
   }
   if (lastSceneW === newW && lastSceneH === newH) return;
+  const ratioChange = Math.abs(newW / newH - lastSceneW / lastSceneH) / (lastSceneW / lastSceneH);
+  if (ratioChange > 0.02) {
+    // Not a zoom — keep windows where they are; just re-anchor.
+    lastSceneW = newW;
+    lastSceneH = newH;
+    return;
+  }
 
   const oldCx = lastSceneW / 2;
   const oldCy = lastSceneH / 2;
@@ -99,6 +112,32 @@ if (window.visualViewport) {
 } else {
   window.addEventListener('resize', fit);
 }
+
+// Right-click never opens the browser's "Save image as…" menu on a desktop.
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/**
+ * Swallow browser-native shortcuts that a desktop would own. Editable
+ * targets (the Notes TextArea shadow input) keep full native editing keys.
+ */
+// Browser-native bindings a desktop owns: Save/Print/Open/Reload/Bookmark.
+const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'r', 'g', 'd']);
+document.addEventListener('keydown', (e) => {
+  const target = e.target as HTMLElement | null;
+  const editable =
+    !!target &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+  if (editable) return;
+  if (e.key === 'F5' || e.key === 'F12') {
+    e.preventDefault();
+    return;
+  }
+  // The ShortcutRouter preventDefaults its own mapped chords; this only
+  // swallows the browser's default bindings, never editable input.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
+    e.preventDefault();
+  }
+});
 
 // Order: shell → size → rAF → desktop icons → initial windows
 shell.start();
@@ -186,7 +225,7 @@ const webosApi = {
   toggleDevtools,
   audit: async () => {
     const { auditScene } = await import('@vectojs/devtools/headless');
-    return auditScene(scene);
+    return auditScene(scene, { includeOverlay: true });
   },
 };
 

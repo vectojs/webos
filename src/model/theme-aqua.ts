@@ -1,6 +1,6 @@
 import type { ThemePreset } from './theme-types';
 
-const wallpaper = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+const wallpaper = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
   <defs>
     <radialGradient id="mbg1" cx="20%" cy="30%" r="70%">
       <stop offset="0%" stop-color="#ff7e5f"/>

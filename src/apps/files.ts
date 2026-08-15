@@ -111,9 +111,9 @@ export const filesApp: AppDefinition = {
       [
         pathLabel,
         navBar,
-        t('Items (click a file to preview, a folder to open)', 14),
+        t('Items (click a file to preview, a folder to open)', 14, '#1e293b', true, 460),
         rowsHost,
-        t('Preview', 14),
+        t('Preview', 14, '#1e293b', true, 460),
         preview,
       ],
       10,

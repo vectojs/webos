@@ -6,16 +6,22 @@
 import { Entity, type IRenderer } from '@vectojs/core';
 import { Button, Stack, Text } from '@vectojs/ui';
 
-export function t(content: string, size = 13, color = '#1e293b', bold = true): Text {
+export function t(
+  content: string,
+  size = 13,
+  color = '#1e293b',
+  bold = true,
+  maxWidth?: number,
+): Text {
   const font = `${bold ? '600' : '400'} ${size}px "Segoe UI", system-ui, sans-serif`;
-  const el = new Text(content, { font, color });
+  const el = new Text(content, { font, color, ...(maxWidth ? { maxWidth } : {}) });
   el.height = size + 6;
   return el;
 }
 
-export function p(content: string, size = 12, color = '#475569'): Text {
+export function p(content: string, size = 12, color = '#475569', maxWidth?: number): Text {
   const font = `400 ${size}px/1.5 "Segoe UI", system-ui, sans-serif`;
-  const el = new Text(content, { font, color });
+  const el = new Text(content, { font, color, ...(maxWidth ? { maxWidth } : {}) });
   el.height = size + 8;
   return el;
 }
@@ -54,6 +60,7 @@ export class ClientRoot extends Entity {
     private readonly inset = 12,
   ) {
     super();
+    this.clipChildren = true;
     this.add(content);
   }
 

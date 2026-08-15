@@ -195,6 +195,8 @@ export class DesktopIcon extends Entity {
   }
 
   public override render(r: IRenderer): void {
+    // ui Text has no center align — center the measured label under the icon.
+    this.label.x = Math.max(0, Math.round((this.width - this.label.width) / 2));
     if (this.selected || this.hovered) {
       r.beginPath();
       r.roundRect(0, 0, this.width, this.height, 6);

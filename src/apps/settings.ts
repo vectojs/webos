@@ -21,7 +21,7 @@ export function createSettingsApp(opts: SettingsAppOptions): AppDefinition {
     defaultWidth: 620,
     defaultHeight: 460,
     create: () => {
-      const status = p('Select a desktop theme preset for your environment:');
+      const status = p('Select a desktop theme preset for your environment:', 12, '#475569', 520);
       const presetButtons = THEME_PRESETS.map((preset) =>
         btn(`${preset.name} (${preset.category})`, false, () => {
           status.setText(`Applied: ${preset.name} — ${preset.description}`);
@@ -42,6 +42,9 @@ export function createSettingsApp(opts: SettingsAppOptions): AppDefinition {
           p(
             'Terminal users: `theme <id>` switches presets too. Ids: ' +
               THEME_PRESETS.map((x) => x.id).join(', '),
+            12,
+            '#475569',
+            520,
           ),
         ],
         6,

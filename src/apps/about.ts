@@ -18,14 +18,28 @@ export const aboutApp: AppDefinition = {
     const ver = p('Version 0.1.0');
     const spec1 = p(
       '• Zero-DOM Canvas Architecture: a single <canvas> handles all visual components.',
+      12,
+      '#475569',
+      440,
     );
     const spec2 = p(
       '• Virtual Math Tree (VMT): full retained scene graph with exact numeric state space.',
+      12,
+      '#475569',
+      440,
     );
     const spec3 = p(
       '• Semantic A11y Projection: transparent ARIA tree for screen readers and automated agents.',
+      12,
+      '#475569',
+      440,
     );
-    const spec4 = p('• Built on @vectojs/desktop — the reference template for create-webos.');
+    const spec4 = p(
+      '• Built on @vectojs/desktop — the reference template for create-webos.',
+      12,
+      '#475569',
+      440,
+    );
     const shortcuts = p(
       'Shortcuts:\n• Start Menu: Ctrl+Space / Meta+Space\n• New Terminal: Ctrl+Alt+T\n• New Notes: Ctrl+N\n• Close Window: Ctrl+W',
     );

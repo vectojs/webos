@@ -23,6 +23,13 @@ const makeMockCtx = (canvas: HTMLCanvasElement): CanvasRenderingContext2D =>
     },
   ) as unknown as CanvasRenderingContext2D;
 
+// Size the test viewport like a desktop — windows open at absolute
+// positions and a 1024x768 default would flag every one as escaping.
+Object.defineProperties(window, {
+  innerWidth: { configurable: true, value: 1920 },
+  innerHeight: { configurable: true, value: 1080 },
+});
+
 HTMLCanvasElement.prototype.getContext = function (kind: string) {
   if (kind === '2d') return makeMockCtx(this as unknown as HTMLCanvasElement);
   return null;
