@@ -20,8 +20,11 @@ export const filesApp: AppDefinition = {
   create: (ctx: AppContext) => {
     let currentDir = '/';
     const pathLabel = t('Location: /', 14);
-    const preview = p('');
+    const preview = p('Select a file to preview its contents.', 12, '#94a3b8');
+    // Fixed-height list region: the outer vstack lays out once, so a late
+    // async population must not grow this box into the sections below.
     const rowsHost = new Stack({ direction: 'vertical', gap: 2 });
+    rowsHost.height = 150;
     rowsHost.interactive = false;
 
     const clearRows = () => {
