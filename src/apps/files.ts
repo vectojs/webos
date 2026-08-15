@@ -20,7 +20,8 @@ export const filesApp: AppDefinition = {
   create: (ctx: AppContext) => {
     let currentDir = '/';
     const pathLabel = t('Location: /', 14);
-    const preview = p('Select a file to preview its contents.', 12, '#94a3b8');
+    const preview = p('');
+    const countLabel = p('0 items', 11, '#94a3b8');
     // Fixed-height list region: the outer vstack lays out once, so a late
     // async population must not grow this box into the sections below.
     const rowsHost = new Stack({ direction: 'vertical', gap: 2 });
@@ -34,18 +35,24 @@ export const filesApp: AppDefinition = {
       }
     };
 
+    let hasLoaded = false;
     const refresh = async (): Promise<void> => {
       if (!ctx.vfs) return;
       pathLabel.setText(`Location: ${currentDir}`);
       clearRows();
-      preview.setText('');
+      // Keep the initial hint until the first load lands; navigation clears
+      // stale previews instead.
+      if (hasLoaded) preview.setText('');
+      hasLoaded = true;
       let entries: VfsEntry[];
       try {
         entries = await ctx.vfs.list(currentDir);
       } catch {
         rowsHost.add(p('(Directory not found)'));
+        countLabel.setText('0 items');
         return;
       }
+      countLabel.setText(`${entries.length} item${entries.length === 1 ? '' : 's'}`);
       if (entries.length === 0) {
         rowsHost.add(p('(empty directory)'));
         return;
@@ -120,11 +127,15 @@ export const filesApp: AppDefinition = {
         new HRule(),
         t('Preview', 14, '#1e293b', true, 460),
         preview,
+        countLabel,
       ],
-      10,
+      12,
     );
     const root = new ClientRoot(stack, 18);
-    void refresh();
+    void refresh().then(() => {
+      preview.setText('Select a file to preview its contents.');
+      preview.scene?.markDirty();
+    });
     return root;
   },
 };
