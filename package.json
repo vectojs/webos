@@ -1,0 +1,38 @@
+{
+  "name": "webos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "format:check": "oxfmt --check \"{src,test,scripts}/**/*.{js,ts,jsx,tsx,mjs,cjs,json}\"",
+    "lint": "oxlint --deny-warnings src test",
+    "test": "bun test",
+    "format": "oxfmt --write \"{src,test,scripts}/**/*.{js,ts,jsx,tsx,mjs,cjs,json}\"",
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "check": "bun run format:check && bun run lint && bun run lint:md",
+    "deploy": "bash scripts/deploy-pages.sh dist webos main",
+    "prepare": "lefthook install"
+  },
+  "dependencies": {
+    "@vectojs/core": "1.36.0",
+    "@vectojs/desktop": "0.3.1",
+    "@vectojs/devtools": "0.11.1",
+    "@vectojs/styles": "0.3.2",
+    "@vectojs/ui": "2.16.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6",
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@happy-dom/global-registrator": "^20.11.0",
+    "lefthook": "^2.1.10",
+    "markdownlint-cli2": "^0.23.2",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.76.0",
+    "typescript": "^7.0.2",
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,191 @@
+/**
+ * Paint app — working palette (D5), entity-relative coordinates (D6), and
+ * `r.*`-only stroke rendering (D2).
+ */
+
+import type { IRenderer } from '@vectojs/core';
+import { Entity } from '@vectojs/core';
+import type { AppDefinition } from '@vectojs/desktop';
+
+interface PaintStroke {
+  points: { x: number; y: number }[];
+  color: string;
+  size: number;
+}
+
+interface Swatch {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+}
+
+const TOOLBAR_H = 40;
+const COLORS = [
+  '#000000',
+  '#ffffff',
+  '#ef4444',
+  '#f97316',
+  '#f59e0b',
+  '#10b981',
+  '#06b6d4',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+];
+
+class PaintRoot extends Entity {
+  private strokes: PaintStroke[] = [
+    {
+      color: '#3b82f6',
+      size: 4,
+      points: [
+        { x: 60, y: 120 },
+        { x: 100, y: 180 },
+        { x: 160, y: 100 },
+        { x: 220, y: 220 },
+        { x: 280, y: 140 },
+        { x: 360, y: 200 },
+      ],
+    },
+    {
+      color: '#ec4899',
+      size: 3,
+      points: [
+        { x: 80, y: 240 },
+        { x: 140, y: 200 },
+        { x: 200, y: 260 },
+        { x: 300, y: 180 },
+        { x: 400, y: 230 },
+      ],
+    },
+  ];
+  private currentStroke: PaintStroke | null = null;
+  private currentColor = '#000000';
+  private currentSize = 3;
+  private readonly swatches: Swatch[];
+
+  constructor() {
+    super();
+    this.interactive = true;
+
+    let sx = 12;
+    this.swatches = COLORS.map((color) => {
+      const sw = { x: sx, y: 8, w: 22, h: 22, color };
+      sx += 28;
+      return sw;
+    });
+    // Clear button sits right after the palette.
+    const clear = { x: sx + 12, y: 8, w: 48, h: 22, color: '' };
+
+    this.on('pointerdown', (e: any) => {
+      const lx = e.localX ?? 0;
+      const ly = e.localY ?? 0;
+      // Toolbar: hit-test swatches (D5) and Clear — not dead pixels anymore.
+      if (ly < TOOLBAR_H) {
+        const swatch = this.swatches.find(
+          (s) => lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h,
+        );
+        if (swatch) {
+          this.currentColor = swatch.color;
+          this.scene?.markDirty();
+          return;
+        }
+        if (lx >= clear.x && lx <= clear.x + clear.w && ly >= clear.y && ly <= clear.y + clear.h) {
+          this.strokes = [];
+          this.scene?.markDirty();
+          return;
+        }
+        return;
+      }
+      this.currentStroke = {
+        points: [{ x: lx, y: ly }],
+        color: this.currentColor,
+        size: this.currentSize,
+      };
+      this.strokes.push(this.currentStroke);
+      this.scene?.markDirty();
+    });
+
+    this.on('pointermove', (e: any) => {
+      if (!this.currentStroke) return;
+      // D6: entity-relative coordinates — no worldToLocal(clientX) hacks.
+      const lx = e.localX ?? 0;
+      const ly = e.localY ?? 0;
+      this.currentStroke.points.push({ x: lx, y: ly });
+      this.scene?.markDirty();
+    });
+
+    this.on('pointerup', () => {
+      this.currentStroke = null;
+    });
+
+    this.swatches.push(clear);
+  }
+
+  public override isPointInside(gx: number, gy: number): boolean {
+    const local = this.worldToLocal(gx, gy);
+    if (!local) return false;
+    return local.x >= 0 && local.y >= 0 && local.x <= this.width && local.y <= this.height;
+  }
+
+  public override render(r: IRenderer): void {
+    r.beginPath();
+    r.roundRect(0, 0, this.width, this.height, 0);
+    r.fill('#ffffff');
+
+    for (const s of this.strokes) {
+      if (s.points.length < 2) continue;
+      r.beginPath();
+      r.moveTo(s.points[0]!.x, s.points[0]!.y);
+      for (let i = 1; i < s.points.length; i++) {
+        r.lineTo(s.points[i]!.x, s.points[i]!.y);
+      }
+      r.stroke(s.color, s.size);
+    }
+
+    // Toolbar
+    r.beginPath();
+    r.roundRect(0, 0, this.width, TOOLBAR_H, 0);
+    r.fill('#f1f5f9');
+    r.stroke('#cbd5e1', 1);
+
+    for (const s of this.swatches) {
+      if (!s.color) {
+        // Clear button
+        r.beginPath();
+        r.roundRect(s.x, s.y, s.w, s.h, 4);
+        r.fill('#fee2e2');
+        r.stroke(this.currentColor === '' ? '#2563eb' : 'rgba(0,0,0,0.2)', 1);
+        r.fillText('Clear', s.x + 10, s.y + 15, '500 11px "Segoe UI", sans-serif', '#b91c1c');
+        continue;
+      }
+      r.beginPath();
+      r.roundRect(s.x, s.y, s.w, s.h, 4);
+      r.fill(s.color);
+      r.stroke(
+        this.currentColor === s.color ? '#2563eb' : 'rgba(0,0,0,0.2)',
+        this.currentColor === s.color ? 2 : 1,
+      );
+    }
+
+    r.fillText(
+      'Click a color, then drag on the canvas to draw',
+      this.swatches[this.swatches.length - 1]!.x + 60,
+      22,
+      '500 11px "Segoe UI", sans-serif',
+      '#475569',
+    );
+  }
+}
+
+export const paintApp: AppDefinition = {
+  id: 'paint',
+  title: 'Paint Studio',
+  icon: '🎨',
+  instances: 'multiple',
+  defaultWidth: 600,
+  defaultHeight: 420,
+  create: () => new PaintRoot(),
+};

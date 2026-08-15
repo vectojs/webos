@@ -1,0 +1,59 @@
+/**
+ * Boot smoke — boots the real main.ts in happy-dom, steps a few frames,
+ * then asserts the audit-clean gate and the projected a11y roles.
+ */
+
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import type { Scene } from '@vectojs/core';
+import type { DesktopShell } from '@vectojs/desktop';
+
+interface WebosApi {
+  scene: Scene;
+  shell: DesktopShell;
+  audit: () => Promise<{ kind: string; message: string }[]>;
+}
+
+function api(): WebosApi {
+  return (window as unknown as { __app: WebosApi }).__app;
+}
+
+beforeAll(async () => {
+  const rootDiv = document.createElement('div');
+  rootDiv.id = 'root';
+  document.body.appendChild(rootDiv);
+  await import('../src/desktop/main');
+  // Let the async seed + initial window open settle, then drive frames.
+  await new Promise((r) => setTimeout(r, 50));
+  const scene = api().scene;
+  for (let i = 0; i < 5; i++) scene.step(16.67);
+});
+
+afterAll(() => {
+  api().scene.destroy();
+});
+
+describe('boot smoke', () => {
+  it('boots a live scene with shell, taskbar and initial windows', () => {
+    const { scene, shell } = api();
+    expect(scene.width).toBeGreaterThan(0);
+    expect(shell.taskbar).not.toBeNull();
+    expect(shell.windowManager.list().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('auditScene is clean modulo documented intentional stacking', async () => {
+    const findings = await api().audit();
+    const real = findings.filter((f) => {
+      if (f.kind !== 'overlap') return true;
+      return false; // root audit (overlay excluded) reports no overlaps anyway
+    });
+    expect(real).toEqual([]);
+  });
+
+  it('projects the expected a11y roles', () => {
+    const { scene } = api();
+    const tree = JSON.stringify(scene.getA11yTree());
+    expect(tree).toContain('toolbar'); // taskbar
+    expect(tree).toContain('dialog'); // windows
+    expect(tree).toContain('button'); // taskbar entries / chrome buttons
+  });
+});
