@@ -6,6 +6,7 @@
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
 import { Button, Stack } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, vstack } from '../app/ui-helpers';
+import { HRule } from './_hrule';
 
 type VfsEntry = Awaited<ReturnType<Vfs['list']>>[number];
 
@@ -113,6 +114,7 @@ export const filesApp: AppDefinition = {
         navBar,
         t('Items (click a file to preview, a folder to open)', 14, '#1e293b', true, 460),
         rowsHost,
+        new HRule(),
         t('Preview', 14, '#1e293b', true, 460),
         preview,
       ],

@@ -17,6 +17,11 @@ import { createSettingsApp } from './apps/settings';
 import { sysmonApp } from './apps/sysmon';
 import { createTerminalApp } from './apps/terminal';
 import { aeroPreset } from './model/theme-aero';
+
+/** A raw SVG string is not a loadable Image URL — wrap as a data URL. */
+export function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`;
+}
 import { presetIds } from './model/themes';
 
 const THEME_IDS = presetIds();
@@ -56,7 +61,7 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
       apps,
       desktop: {
         wallpaper: DEFAULT_PRESET.wallpaperBg,
-        wallpaperImage: DEFAULT_PRESET.wallpaperSvg,
+        wallpaperImage: svgDataUrl(DEFAULT_PRESET.wallpaperSvg),
         taskbarHeight: 40,
         taskbarPosition: 'bottom',
       },

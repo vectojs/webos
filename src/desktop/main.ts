@@ -4,7 +4,7 @@
 
 import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
-import { buildConfig } from '../config';
+import { buildConfig, svgDataUrl } from '../config';
 import { findPreset } from '../model/themes';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS } from './icons';
 
@@ -30,7 +30,7 @@ function applyTheme(presetId: string): void {
       ...target.tokens,
       'desktop-wallpaper': target.wallpaperBg,
     },
-    target.wallpaperCdnUrl || target.wallpaperSvg,
+    target.wallpaperCdnUrl || svgDataUrl(target.wallpaperSvg),
   );
   scene.markDirty();
 }
