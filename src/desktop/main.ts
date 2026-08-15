@@ -143,16 +143,13 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Order: shell → size → rAF → desktop icons → initial windows
-shell.start();
-fit();
-scene.start();
-
 // ------------------------------------------------------------- desktop icons
 
 const desktopIcons: DesktopIcon[] = [];
 
 const marquee = new MarqueeSelection();
+marquee.width = 1;
+marquee.height = 1;
 const catcher = new DesktopClickCatcher(
   () => {
     for (const icon of desktopIcons) icon.setSelected(false);
@@ -175,9 +172,19 @@ const catcher = new DesktopClickCatcher(
     scene.markDirty();
   },
 );
-marquee.width = 1;
-marquee.height = 1;
+// The catcher is the empty-desktop pointer surface, so its a11y mirror must be
+// the BOTTOM-most mirror: added before the shell mounts anything, so every
+// later mirror (taskbar, icons, windows) stacks above it and keeps its own
+// clicks. Adding it after shell.start() made its mirror the topmost element
+// at every point — Start and window clicks died and taskbar drags started
+// marquees (measured: elementFromPoint over the Start button returned the
+// catcher mirror).
 scene.add(catcher);
+
+// Order: catcher → shell → size → rAF → icons → marquee → initial windows
+shell.start();
+fit();
+scene.start();
 
 const startX = 14;
 const startY = 14;
