@@ -315,7 +315,7 @@ void (async () => {
   const termWin: DesktopWindow | null = shell.open('terminal');
   if (termWin) termWin.setGeometry(200, 36, 540, 380);
   const filesWin: DesktopWindow | null = shell.open('files');
-  if (filesWin) filesWin.setGeometry(560, 80, 520, 400);
+  if (filesWin) filesWin.setGeometry(560, 80, 520, 470);
   scene.markDirty();
 })();
 
