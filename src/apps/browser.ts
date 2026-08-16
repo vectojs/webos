@@ -56,8 +56,8 @@ export const browserApp: AppDefinition = {
       placeholder: 'vectojs://…',
       font: '500 12px "Consolas", monospace',
     });
-    const pageTitle = t('Welcome to VectoJS WebOS', 16);
-    const pageBody = p('');
+    const pageTitle = t('Welcome to VectoJS WebOS', 16, '#1e293b', true, 570);
+    const pageBody = p('', 12, '#475569', 570);
     const status = p('', 11, '#94a3b8');
 
     const history: string[] = [HOME];
