@@ -22,9 +22,10 @@ import { aeroPreset } from './model/theme-aero';
 export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`;
 }
-import { presetIds } from './model/themes';
+import { findPreset, presetIds } from './model/themes';
 
 const THEME_IDS = presetIds();
+const THEME_STORAGE_KEY = 'webos:theme';
 
 export interface BootConfig {
   config: WebosConfig;
@@ -35,10 +36,35 @@ export interface BootConfig {
 export const DEFAULT_PRESET = aeroPreset;
 
 /**
+ * The user's last-selected theme, if it is still a known preset id. Guarded
+ * for environments without localStorage (SSR, privacy mode). Falls back to
+ * the scaffold default.
+ */
+export function loadPersistedTheme(): string {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored && THEME_IDS.includes(stored)) return stored;
+  } catch {
+    // localStorage unavailable — use the default.
+  }
+  return DEFAULT_PRESET.id;
+}
+
+/** Persist a runtime theme choice (guarded the same way). */
+export function persistTheme(presetId: string): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, presetId);
+  } catch {
+    // localStorage unavailable — persistence is best-effort.
+  }
+}
+
+/**
  * Assemble the shell config. `onTheme` is injected by the boot layer so the
  * apps stay free of globals.
  */
 export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
+  const preset = findPreset(loadPersistedTheme()) ?? DEFAULT_PRESET;
   const apps = [
     createTerminalApp({
       onTheme,
@@ -60,12 +86,12 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
     config: {
       apps,
       desktop: {
-        wallpaper: DEFAULT_PRESET.wallpaperBg,
-        wallpaperImage: svgDataUrl(DEFAULT_PRESET.wallpaperSvg),
+        wallpaper: preset.wallpaperBg,
+        wallpaperImage: preset.wallpaperCdnUrl || svgDataUrl(preset.wallpaperSvg),
         taskbarHeight: 40,
         taskbarPosition: 'bottom',
       },
-      theme: { ...DEFAULT_PRESET.tokens },
+      theme: { ...preset.tokens },
       shortcuts: {
         'Control+n': { type: 'open-app', appId: 'notes' },
         'Control+p': { type: 'open-app', appId: 'paint' },

@@ -4,7 +4,7 @@
  */
 
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
-import { Button, Stack } from '@vectojs/ui';
+import { Button, DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
@@ -22,17 +22,28 @@ export const filesApp: AppDefinition = {
     const pathLabel = t('Location: /', 14);
     const preview = p('');
     const countLabel = p('0 items', 11, '#94a3b8');
-    // Fixed-height list region: the outer vstack lays out once, so a late
-    // async population must not grow this box into the sections below.
+    // Scrollable list region: rows stack inside a ScrollView so a long listing
+    // scrolls instead of clipping (the outer vstack lays out once).
     const rowsHost = new Stack({ direction: 'vertical', gap: 2 });
-    rowsHost.height = 150;
     rowsHost.interactive = false;
+    const scroll = new ScrollView({
+      width: 480,
+      height: 150,
+      scrollPhysics: DOCUMENT_SCROLL_PHYSICS,
+    });
+    scroll.content.add(rowsHost);
+
+    const syncScrollSize = () => {
+      scroll.content.width = scroll.width;
+      scroll.content.height = Math.max(rowsHost.height, scroll.height);
+    };
 
     const clearRows = () => {
       for (const child of [...rowsHost.children]) {
         rowsHost.remove(child);
         child.destroy();
       }
+      syncScrollSize();
     };
 
     let hasLoaded = false;
@@ -74,6 +85,7 @@ export const filesApp: AppDefinition = {
         row.a11yProjection = 'eager';
         rowsHost.add(row);
       }
+      syncScrollSize();
       rowsHost.scene?.markDirty();
     };
 
@@ -123,7 +135,7 @@ export const filesApp: AppDefinition = {
         pathLabel,
         navBar,
         t('Items (click a file to preview, a folder to open)', 14, '#1e293b', true, 460),
-        rowsHost,
+        scroll,
         new HRule(),
         t('Preview', 14, '#1e293b', true, 460),
         preview,

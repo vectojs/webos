@@ -4,7 +4,7 @@
 
 import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
-import { buildConfig, svgDataUrl } from '../config';
+import { buildConfig, persistTheme, svgDataUrl } from '../config';
 import { findPreset } from '../model/themes';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 
@@ -32,6 +32,7 @@ function applyTheme(presetId: string): void {
     },
     target.wallpaperCdnUrl || svgDataUrl(target.wallpaperSvg),
   );
+  persistTheme(target.id);
   scene.markDirty();
 }
 
@@ -126,6 +127,49 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
  */
 // Browser-native bindings a desktop owns: Save/Print/Open/Reload/Bookmark.
 const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'r', 'g', 'd']);
+
+/** Snap/tiling gestures — Ctrl+Alt+Arrow snaps the focused window, Ctrl+Alt+G tiles. */
+const SNAP_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+
+function focusedWindow(): DesktopWindow | null {
+  return shell.windowManager.list().find((w) => w.focused) ?? null;
+}
+
+function workArea(): { x: number; y: number; width: number; height: number } {
+  return shell.layout.workArea(shell.layout.primary().id);
+}
+
+function snapFocused(dir: 'left' | 'right' | 'top' | 'bottom'): void {
+  const win = focusedWindow();
+  if (!win) return;
+  const area = workArea();
+  const halfW = Math.floor(area.width / 2);
+  const halfH = Math.floor(area.height / 2);
+  if (dir === 'left') win.setGeometry(area.x, area.y, halfW, area.height);
+  else if (dir === 'right')
+    win.setGeometry(area.x + area.width - halfW, area.y, halfW, area.height);
+  else if (dir === 'top') win.setGeometry(area.x, area.y, area.width, halfH);
+  else win.setGeometry(area.x, area.y + area.height - halfH, area.width, halfH);
+  scene.markDirty();
+}
+
+/** Arrange all non-minimized windows in a √n grid over the work area. */
+function tileWindows(): void {
+  const wins = shell.windowManager.list().filter((w) => !w.minimized);
+  if (wins.length === 0) return;
+  const area = workArea();
+  const cols = Math.ceil(Math.sqrt(wins.length));
+  const rows = Math.ceil(wins.length / cols);
+  const w = Math.floor(area.width / cols);
+  const h = Math.floor(area.height / rows);
+  wins.forEach((win, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    win.setGeometry(area.x + col * w, area.y + row * h, w, h);
+  });
+  scene.markDirty();
+}
+
 document.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement | null;
   const editable =
@@ -140,6 +184,19 @@ document.addEventListener('keydown', (e) => {
   // swallows the browser's default bindings, never editable input.
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
     e.preventDefault();
+  }
+  // Snap/tiling gestures (Ctrl+Alt — disjoint from the browser shortcuts above).
+  if (e.ctrlKey && e.altKey) {
+    if (SNAP_KEYS.has(e.key)) {
+      snapFocused(e.key.slice(5).toLowerCase() as 'left' | 'right' | 'top' | 'bottom');
+      e.preventDefault();
+      return;
+    }
+    if (e.key.toLowerCase() === 'g') {
+      tileWindows();
+      e.preventDefault();
+      return;
+    }
   }
 });
 
