@@ -16,6 +16,8 @@ export const notesApp: AppDefinition = {
   instances: 'multiple',
   defaultWidth: 540,
   defaultHeight: 420,
+  minWidth: 440,
+  minHeight: 320,
   create: (ctx: AppContext) => {
     noteCounter++;
     const path = `/notes/note-${noteCounter}.txt`;

@@ -13,6 +13,8 @@ export const aboutApp: AppDefinition = {
   instances: 'single',
   defaultWidth: 520,
   defaultHeight: 440,
+  minWidth: 400,
+  minHeight: 300,
   create: () => {
     const title = t('VectoJS WebOS', 16);
     const ver = p('Version 0.1.0');

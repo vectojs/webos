@@ -192,6 +192,8 @@ export function createTerminalApp(opts: TerminalAppOptions): AppDefinition {
     instances: 'multiple',
     defaultWidth: 620,
     defaultHeight: 400,
+    minWidth: 420,
+    minHeight: 280,
     create: (ctx) => new TerminalRoot(ctx.vfs, opts),
   };
 }
