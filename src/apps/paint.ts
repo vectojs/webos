@@ -187,5 +187,7 @@ export const paintApp: AppDefinition = {
   instances: 'multiple',
   defaultWidth: 600,
   defaultHeight: 420,
+  minWidth: 360,
+  minHeight: 300,
   create: () => new PaintRoot(),
 };

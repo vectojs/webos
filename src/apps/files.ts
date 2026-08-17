@@ -17,6 +17,8 @@ export const filesApp: AppDefinition = {
   instances: 'single',
   defaultWidth: 580,
   defaultHeight: 470,
+  minWidth: 420,
+  minHeight: 340,
   create: (ctx: AppContext) => {
     let currentDir = '/';
     const pathLabel = t('Location: /', 14);

@@ -20,6 +20,8 @@ export function createSettingsApp(opts: SettingsAppOptions): AppDefinition {
     instances: 'single',
     defaultWidth: 620,
     defaultHeight: 460,
+    minWidth: 420,
+    minHeight: 340,
     create: () => {
       const status = p('Select a desktop theme preset for your environment:', 12, '#475569', 520);
       const presetButtons = THEME_PRESETS.map((preset) =>

@@ -98,5 +98,7 @@ export const clockApp: AppDefinition = {
   instances: 'single',
   defaultWidth: 320,
   defaultHeight: 260,
+  minWidth: 240,
+  minHeight: 220,
   create: () => new ClockRoot(),
 };

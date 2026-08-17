@@ -49,6 +49,8 @@ export const browserApp: AppDefinition = {
   instances: 'single',
   defaultWidth: 640,
   defaultHeight: 460,
+  minWidth: 440,
+  minHeight: 320,
   create: () => {
     const addressBar = new Input({
       width: 460,

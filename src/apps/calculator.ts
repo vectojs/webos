@@ -152,5 +152,7 @@ export const calculatorApp: AppDefinition = {
   instances: 'single',
   defaultWidth: 280,
   defaultHeight: 330,
+  minWidth: 240,
+  minHeight: 280,
   create: (_ctx: AppContext) => new CalculatorRoot(),
 };

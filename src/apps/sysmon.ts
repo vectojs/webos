@@ -179,5 +179,7 @@ export const sysmonApp: AppDefinition = {
   instances: 'single',
   defaultWidth: 460,
   defaultHeight: 420,
+  minWidth: 340,
+  minHeight: 300,
   create: (ctx) => new SysmonRoot(ctx.windowManager),
 };
