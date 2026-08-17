@@ -1,8 +1,13 @@
 /**
- * Browser app — an honestly-labeled demo browser: a real address bar
- * (`@vectojs/ui` Input, the sanctioned DOM exception for text entry) with
- * Enter-to-navigate, Back/Forward history, and internal `vectojs://` pages.
- * No network fetches — page content lives in-code.
+ * Browser app — a text-mode browser: a real address bar (`@vectojs/ui` Input,
+ * the sanctioned DOM exception for text entry) with Enter-to-navigate and
+ * Back/Forward history.
+ *
+ * `vectojs://…` addresses render internal in-code pages. `http(s)://…`
+ * addresses fetch the real page through the `webos-proxy` Cloudflare Worker
+ * (`https://proxy.vectojs.org/?url=…`), which strips HTML to plain text
+ * server-side — so the Zero-DOM canvas browser sidesteps both CORS and
+ * X-Frame-Options by never iframing anything.
  */
 
 import type { AppDefinition } from '@vectojs/desktop';
@@ -20,7 +25,8 @@ const PAGES: Record<string, Page> = {
     title: 'Welcome to VectoJS WebOS',
     body:
       'VectoJS is a modern Canvas-native UI runtime with a Virtual Math Tree, semantic a11y DOM projection, and WebGL/WebGPU backends.\n\n' +
-      '• Zero DOM overhead\n• Hardware accelerated rendering\n• Full keyboard navigation & screen-reader compatibility',
+      '• Zero DOM overhead\n• Hardware accelerated rendering\n• Full keyboard navigation & screen-reader compatibility\n\n' +
+      'Try a real URL above, e.g. https://example.com',
   },
   'vectojs://docs': {
     title: 'VectoJS Developer Documentation',
@@ -41,6 +47,14 @@ const PAGES: Record<string, Page> = {
 };
 
 const HOME = 'vectojs://home';
+const PROXY_URL = 'https://proxy.vectojs.org/?url=';
+
+/** Cap fetched text for canvas display (the window has no page scroll yet). */
+const MAX_DISPLAY_CHARS = 2000;
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
 
 export const browserApp: AppDefinition = {
   id: 'browser',
@@ -55,7 +69,7 @@ export const browserApp: AppDefinition = {
     const addressBar = new Input({
       width: 460,
       value: HOME,
-      placeholder: 'vectojs://…',
+      placeholder: 'vectojs://… or https://…',
       font: '500 12px "Consolas", monospace',
     });
     const pageTitle = t('Welcome to VectoJS WebOS', 16, '#1e293b', true, 570);
@@ -65,36 +79,65 @@ export const browserApp: AppDefinition = {
     const history: string[] = [HOME];
     let historyIndex = 0;
 
-    const render = (): void => {
+    const render = async (): Promise<void> => {
       const url = history[historyIndex];
       addressBar.value = url;
-      const page = PAGES[url] ?? {
-        title: `Unknown address: ${url}`,
-        body: 'That page does not exist on the demo web. Try vectojs://home, /docs, /gallery, /roadmap, or /shortcuts.',
-      };
-      pageTitle.setText(page.title);
-      pageBody.setText(page.body);
-      status.setText(`History: ${history.length}  ·  ${historyIndex + 1} of ${history.length}`);
+
+      if (isHttpUrl(url)) {
+        pageTitle.setText(url);
+        pageBody.setText('Loading…');
+        status.setText(`Fetching ${url} via proxy…`);
+        addressBar.scene?.markDirty();
+        try {
+          const resp = await fetch(PROXY_URL + encodeURIComponent(url));
+          const data = (await resp.json()) as {
+            title?: string;
+            text?: string;
+            error?: string;
+          };
+          if (resp.ok && data.text) {
+            pageTitle.setText(data.title || url);
+            pageBody.setText(data.text.slice(0, MAX_DISPLAY_CHARS));
+            status.setText(`${url}  ·  ${data.text.length} chars via proxy`);
+          } else {
+            pageTitle.setText(`Error: ${url}`);
+            pageBody.setText(data.error || `HTTP ${resp.status}`);
+            status.setText('Fetch failed');
+          }
+        } catch {
+          pageTitle.setText(`Error: ${url}`);
+          pageBody.setText('Network error — is the proxy reachable?');
+          status.setText('Fetch failed');
+        }
+      } else {
+        const page = PAGES[url] ?? {
+          title: `Unknown address: ${url}`,
+          body: 'That page does not exist on the demo web. Try vectojs://home, /docs, /gallery, /roadmap, /shortcuts, or a real https:// URL.',
+        };
+        pageTitle.setText(page.title);
+        pageBody.setText(page.body);
+        status.setText(`History: ${history.length}  ·  ${historyIndex + 1} of ${history.length}`);
+      }
       addressBar.scene?.markDirty();
     };
 
     const navigate = (url: string): void => {
-      const target = url.startsWith('vectojs://') ? url : `vectojs://${url}`;
+      const target = isHttpUrl(url) ? url : url.startsWith('vectojs://') ? url : `vectojs://${url}`;
       history.splice(historyIndex + 1);
       history.push(target);
       historyIndex = history.length - 1;
-      render();
+      void render();
     };
     const goBack = (): void => {
       if (historyIndex > 0) {
         historyIndex--;
-        render();
+        void render();
       }
     };
     const goForward = (): void => {
       if (historyIndex < history.length - 1) {
         historyIndex++;
-        render();
+        void render();
       }
     };
 
@@ -118,7 +161,7 @@ export const browserApp: AppDefinition = {
       [navBar, addressBar, new HRule(), pageTitle, pageBody, new HRule(), status],
       10,
     );
-    render();
+    void render();
     return new ClientRoot(stack, 18);
   },
 };
