@@ -144,11 +144,13 @@ export const browserApp: AppDefinition = {
             title?: string;
             text?: string;
             error?: string;
+            truncated?: boolean;
           };
           if (resp.ok && data.text) {
             pageTitle.setText(data.title || url);
             setBody(data.text);
-            status.setText(`${url}  ·  ${data.text.length} chars via proxy`);
+            const truncated = data.truncated ? ' · truncated' : '';
+            status.setText(`${url}  ·  ${data.text.length} chars via proxy${truncated}`);
           } else {
             pageTitle.setText(`Error: ${url}`);
             setBody(data.error || `HTTP ${resp.status}`);
