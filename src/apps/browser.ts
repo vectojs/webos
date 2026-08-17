@@ -7,11 +7,13 @@
  * addresses fetch the real page through the `webos-proxy` Cloudflare Worker
  * (`https://proxy.vectojs.org/?url=…`), which strips HTML to plain text
  * server-side — so the Zero-DOM canvas browser sidesteps both CORS and
- * X-Frame-Options by never iframing anything.
+ * X-Frame-Options by never iframing anything. The page body lives in a
+ * `ScrollView`, so long fetched pages scroll instead of clipping.
  */
 
 import type { AppDefinition } from '@vectojs/desktop';
-import { Input } from '@vectojs/ui';
+import { Entity, type IRenderer } from '@vectojs/core';
+import { DOCUMENT_SCROLL_PHYSICS, Input, ScrollView } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
@@ -48,12 +50,46 @@ const PAGES: Record<string, Page> = {
 
 const HOME = 'vectojs://home';
 const PROXY_URL = 'https://proxy.vectojs.org/?url=';
-
-/** Cap fetched text for canvas display (the window has no page scroll yet). */
-const MAX_DISPLAY_CHARS = 2000;
+const BODY_WIDTH = 570;
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
+}
+
+/**
+ * Fills the browser client area: a top bar (nav + address + title), a bottom
+ * status band, and a ScrollView that takes every pixel in between — so the page
+ * body grows/shrinks with the window instead of clipping (the outer Stack lays
+ * out once and cannot give a child the remaining height).
+ */
+class BrowserLayout extends Entity {
+  constructor(
+    private readonly top: Entity,
+    private readonly scroll: ScrollView,
+    private readonly bottom: Entity,
+    private readonly gap = 10,
+  ) {
+    super();
+    this.clipChildren = true;
+    this.add(top, scroll, bottom);
+  }
+
+  public override isPointInside(gx: number, gy: number): boolean {
+    const local = this.worldToLocal(gx, gy);
+    if (!local) return false;
+    return local.x >= 0 && local.y >= 0 && local.x <= this.width && local.y <= this.height;
+  }
+
+  public override render(_r: IRenderer): void {
+    this.top.x = 0;
+    this.top.y = 0;
+    const scrollY = this.top.height + this.gap;
+    this.scroll.x = 0;
+    this.scroll.y = scrollY;
+    this.scroll.height = Math.max(0, this.height - scrollY - this.gap - this.bottom.height);
+    this.bottom.x = 0;
+    this.bottom.y = this.height - this.bottom.height;
+  }
 }
 
 export const browserApp: AppDefinition = {
@@ -72,12 +108,26 @@ export const browserApp: AppDefinition = {
       placeholder: 'vectojs://… or https://…',
       font: '500 12px "Consolas", monospace',
     });
-    const pageTitle = t('Welcome to VectoJS WebOS', 16, '#1e293b', true, 570);
-    const pageBody = p('', 12, '#475569', 570);
+    const pageTitle = t('Welcome to VectoJS WebOS', 16, '#1e293b', true, BODY_WIDTH);
+    const bodyText = p('', 12, '#475569', BODY_WIDTH);
+    const scroll = new ScrollView({
+      width: BODY_WIDTH,
+      height: 200,
+      scrollPhysics: DOCUMENT_SCROLL_PHYSICS,
+    });
+    scroll.content.add(bodyText);
     const status = p('', 11, '#94a3b8');
 
     const history: string[] = [HOME];
     let historyIndex = 0;
+
+    /** Show body text and refresh the scroll extent (content grows/shrinks). */
+    const setBody = (text: string): void => {
+      bodyText.setText(text);
+      scroll.content.width = scroll.width;
+      scroll.content.height = Math.max(bodyText.height, scroll.height);
+      scroll.scrollTo(0);
+    };
 
     const render = async (): Promise<void> => {
       const url = history[historyIndex];
@@ -85,7 +135,7 @@ export const browserApp: AppDefinition = {
 
       if (isHttpUrl(url)) {
         pageTitle.setText(url);
-        pageBody.setText('Loading…');
+        setBody('Loading…');
         status.setText(`Fetching ${url} via proxy…`);
         addressBar.scene?.markDirty();
         try {
@@ -97,16 +147,16 @@ export const browserApp: AppDefinition = {
           };
           if (resp.ok && data.text) {
             pageTitle.setText(data.title || url);
-            pageBody.setText(data.text.slice(0, MAX_DISPLAY_CHARS));
+            setBody(data.text);
             status.setText(`${url}  ·  ${data.text.length} chars via proxy`);
           } else {
             pageTitle.setText(`Error: ${url}`);
-            pageBody.setText(data.error || `HTTP ${resp.status}`);
+            setBody(data.error || `HTTP ${resp.status}`);
             status.setText('Fetch failed');
           }
         } catch {
           pageTitle.setText(`Error: ${url}`);
-          pageBody.setText('Network error — is the proxy reachable?');
+          setBody('Network error — is the proxy reachable?');
           status.setText('Fetch failed');
         }
       } else {
@@ -115,7 +165,7 @@ export const browserApp: AppDefinition = {
           body: 'That page does not exist on the demo web. Try vectojs://home, /docs, /gallery, /roadmap, /shortcuts, or a real https:// URL.',
         };
         pageTitle.setText(page.title);
-        pageBody.setText(page.body);
+        setBody(page.body);
         status.setText(`History: ${history.length}  ·  ${historyIndex + 1} of ${history.length}`);
       }
       addressBar.scene?.markDirty();
@@ -157,11 +207,11 @@ export const browserApp: AppDefinition = {
       6,
     );
 
-    const stack = vstack(
-      [navBar, addressBar, new HRule(), pageTitle, pageBody, new HRule(), status],
-      10,
-    );
+    const top = vstack([navBar, addressBar, new HRule(), pageTitle], 10);
+    const bottom = vstack([new HRule(), status], 10);
+    const layout = new BrowserLayout(top, scroll, bottom, 10);
+
     void render();
-    return new ClientRoot(stack, 18);
+    return new ClientRoot(layout, 18);
   },
 };
