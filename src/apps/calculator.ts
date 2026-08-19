@@ -11,7 +11,7 @@ import type { IRenderer } from '@vectojs/core';
 import { Entity } from '@vectojs/core';
 import type { AppContext, AppDefinition } from '@vectojs/desktop';
 import { Button, Text } from '@vectojs/ui';
-import { btn } from '../app/ui-helpers';
+import { btn, t } from '../app/ui-helpers';
 import { isWindowFocused } from '../app/window-utils';
 import { CalculatorModel, type CalcOp } from '../model/calculator';
 
@@ -31,10 +31,8 @@ class CalculatorRoot extends Entity {
     super();
     this.clipChildren = true;
 
-    this.displayLabel = new Text('0', {
-      font: '700 24px "Segoe UI", system-ui, sans-serif',
-      color: '#0f172a',
-    });
+    this.displayLabel = t('0', 24);
+    this.displayLabel.font = '700 24px "Segoe UI", system-ui, sans-serif';
     this.displayLabel.height = DISPLAY_H;
     this.displayLabel.interactive = false;
     this.add(this.displayLabel);

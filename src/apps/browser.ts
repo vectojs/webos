@@ -13,8 +13,8 @@
 
 import type { AppDefinition } from '@vectojs/desktop';
 import { Entity, type IRenderer } from '@vectojs/core';
-import { DOCUMENT_SCROLL_PHYSICS, Input, ScrollView } from '@vectojs/ui';
-import { btn, ClientRoot, hstack, p, t, vstack } from '../app/ui-helpers';
+import { DOCUMENT_SCROLL_PHYSICS, ScrollView } from '@vectojs/ui';
+import { btn, ClientRoot, hstack, p, t, ThemedInput, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
 interface Page {
@@ -102,7 +102,7 @@ export const browserApp: AppDefinition = {
   minWidth: 440,
   minHeight: 320,
   create: () => {
-    const addressBar = new Input({
+    const addressBar = new ThemedInput({
       width: 460,
       value: HOME,
       placeholder: 'vectojs://… or https://…',
@@ -116,7 +116,7 @@ export const browserApp: AppDefinition = {
       scrollPhysics: DOCUMENT_SCROLL_PHYSICS,
     });
     scroll.content.add(bodyText);
-    const status = p('', 11, '#94a3b8');
+    const status = p('', 11);
 
     const history: string[] = [HOME];
     let historyIndex = 0;

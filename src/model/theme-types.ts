@@ -11,3 +11,20 @@ export interface ThemePreset {
   wallpaperSvg: string;
   wallpaperCdnUrl: string;
 }
+
+/** App-surface tokens shared by every WebOS application. */
+export interface AppThemeTokens {
+  surface: string;
+  surfaceRaised: string;
+  surfaceSunken: string;
+  text: string;
+  textMuted: string;
+  border: string;
+  accent: string;
+  accentText: string;
+  accentHover: string;
+  focus: string;
+  danger: string;
+  dangerSurface: string;
+  inputSurface: string;
+}

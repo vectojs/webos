@@ -17,6 +17,7 @@ import { createSettingsApp } from './apps/settings';
 import { sysmonApp } from './apps/sysmon';
 import { createTerminalApp } from './apps/terminal';
 import { aeroPreset } from './model/theme-aero';
+import { setAppTheme } from './model/app-theme';
 
 /** A raw SVG string is not a loadable Image URL — wrap as a data URL. */
 export function svgDataUrl(svg: string): string {
@@ -65,6 +66,7 @@ export function persistTheme(presetId: string): void {
  */
 export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
   const preset = findPreset(loadPersistedTheme()) ?? DEFAULT_PRESET;
+  setAppTheme(preset);
   const apps = [
     createTerminalApp({
       onTheme,
