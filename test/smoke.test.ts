@@ -56,4 +56,30 @@ describe('boot smoke', () => {
     expect(tree).toContain('dialog'); // windows
     expect(tree).toContain('button'); // taskbar entries / chrome buttons
   });
+
+  it('keeps every app inside its minimum window geometry', async () => {
+    const { scene, shell } = api();
+    const specs = [
+      ['terminal', 420, 280],
+      ['files', 420, 340],
+      ['notes', 440, 320],
+      ['paint', 360, 300],
+      ['browser', 440, 320],
+      ['calculator', 240, 280],
+      ['sysmon', 340, 300],
+      ['settings', 420, 340],
+      ['clock', 260, 220],
+      ['about', 400, 300],
+    ] as const;
+
+    for (const [appId, width, height] of specs) {
+      for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+      const win = shell.open(appId);
+      win.setGeometry(8, 8, width, height);
+      for (let i = 0; i < 4; i++) scene.step(16.67);
+
+      const overflow = (await api().audit()).filter((finding) => finding.kind !== 'overlap');
+      expect(overflow, `${appId} overflowed at ${width}x${height}`).toEqual([]);
+    }
+  });
 });

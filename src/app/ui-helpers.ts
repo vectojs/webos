@@ -4,7 +4,15 @@
  */
 
 import { Entity, type IRenderer } from '@vectojs/core';
-import { Button, Input, Stack, Text, TextArea } from '@vectojs/ui';
+import {
+  Button,
+  DOCUMENT_SCROLL_PHYSICS,
+  Input,
+  ScrollView,
+  Stack,
+  Text,
+  TextArea,
+} from '@vectojs/ui';
 import { appTheme } from '../model/app-theme';
 
 type TextRole = 'text' | 'textMuted' | null;
@@ -177,5 +185,48 @@ export class ClientRoot extends Entity {
     this.content.y = this.inset;
     this.content.width = Math.max(0, this.width - this.inset * 2);
     this.content.height = Math.max(0, this.height - this.inset * 2);
+  }
+}
+
+/** Insets a document-like stack and scrolls it when a window reaches its minimum size. */
+export class ScrollableClientRoot extends Entity {
+  private readonly scroll: ScrollView;
+
+  constructor(
+    private readonly content: Stack,
+    private readonly responsiveText: Text[],
+    private readonly inset = 18,
+  ) {
+    super();
+    this.clipChildren = true;
+    this.scroll = new ScrollView({
+      width: 1,
+      height: 1,
+      scrollPhysics: DOCUMENT_SCROLL_PHYSICS,
+    });
+    this.scroll.content.add(content);
+    this.add(this.scroll);
+  }
+
+  public override isPointInside(gx: number, gy: number): boolean {
+    const local = this.worldToLocal(gx, gy);
+    if (!local) return false;
+    return local.x >= 0 && local.y >= 0 && local.x <= this.width && local.y <= this.height;
+  }
+
+  public override render(_r: IRenderer): void {
+    const width = Math.max(0, this.width - this.inset * 2);
+    const height = Math.max(0, this.height - this.inset * 2);
+    for (const text of this.responsiveText) {
+      if (text.maxWidth !== width) text.setMaxWidth(width);
+    }
+    this.content.width = width;
+    this.content.layout();
+    this.scroll.x = this.inset;
+    this.scroll.y = this.inset;
+    this.scroll.width = width;
+    this.scroll.height = height;
+    this.scroll.content.width = width;
+    this.scroll.content.height = this.content.height;
   }
 }

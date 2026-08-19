@@ -4,7 +4,7 @@
  */
 
 import type { AppDefinition } from '@vectojs/desktop';
-import { btn, ClientRoot, p, t, vstack } from '../app/ui-helpers';
+import { btn, p, ScrollableClientRoot, t, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 import { THEME_PRESETS } from '../model/themes';
 
@@ -32,27 +32,20 @@ export function createSettingsApp(opts: SettingsAppOptions): AppDefinition {
         }),
       );
 
+      const tip = p(
+        'Terminal users: `theme <id>` switches presets too. Ids: ' +
+          THEME_PRESETS.map((x) => x.id).join(', '),
+        12,
+      );
+      const title = t('Desktop Personalization Studio', 16);
+      const catalogTitle = t('Preset Catalog', 14);
+      const tipTitle = t('Tip', 14);
       const stack = vstack(
-        [
-          t('Desktop Personalization Studio', 16),
-          status,
-          new HRule(),
-          t('Preset Catalog', 14),
-          ...presetButtons,
-          new HRule(),
-          t('Tip', 14),
-          p(
-            'Terminal users: `theme <id>` switches presets too. Ids: ' +
-              THEME_PRESETS.map((x) => x.id).join(', '),
-            12,
-            '#475569',
-            520,
-          ),
-        ],
+        [title, status, new HRule(), catalogTitle, ...presetButtons, new HRule(), tipTitle, tip],
         6,
       );
 
-      return new ClientRoot(stack, 18);
+      return new ScrollableClientRoot(stack, [title, status, catalogTitle, tipTitle, tip]);
     },
   };
 }

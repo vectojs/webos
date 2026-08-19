@@ -3,7 +3,7 @@
  */
 
 import type { AppDefinition } from '@vectojs/desktop';
-import { ClientRoot, p, t, vstack } from '../app/ui-helpers';
+import { p, ScrollableClientRoot, t, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
 export const aboutApp: AppDefinition = {
@@ -45,22 +45,34 @@ export const aboutApp: AppDefinition = {
     const shortcuts = p(
       'Shortcuts:\n• Start Menu: Ctrl+Space / Meta+Space\n• New Terminal: Ctrl+Alt+T\n• New Notes: Ctrl+N\n• Close Window: Ctrl+W',
     );
+    const architectureTitle = t('Architecture Highlights', 14);
+    const shortcutsTitle = t('Desktop Shortcuts', 14);
     const stack = vstack(
       [
         title,
         ver,
         new HRule(),
-        t('Architecture Highlights', 14),
+        architectureTitle,
         spec1,
         spec2,
         spec3,
         spec4,
         new HRule(),
-        t('Desktop Shortcuts', 14),
+        shortcutsTitle,
         shortcuts,
       ],
       8,
     );
-    return new ClientRoot(stack, 18);
+    return new ScrollableClientRoot(stack, [
+      title,
+      ver,
+      architectureTitle,
+      spec1,
+      spec2,
+      spec3,
+      spec4,
+      shortcutsTitle,
+      shortcuts,
+    ]);
   },
 };
