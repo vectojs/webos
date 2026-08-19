@@ -5,12 +5,59 @@
  * A 1s interval refreshes the readout and pauses while minimized (D8).
  */
 
-import type { Entity } from '@vectojs/core';
+import { Entity, type IRenderer } from '@vectojs/core';
 import type { AppDefinition, WindowManager } from '@vectojs/desktop';
-import { Stack, Text } from '@vectojs/ui';
+import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, themedButton, vstack } from '../app/ui-helpers';
 import { isWindowVisible } from '../app/window-utils';
 import { FrameSampler } from '../model/telemetry';
+
+class SysmonLayout extends Entity {
+  constructor(
+    private readonly scroll: ScrollView,
+    private readonly rows: Text[],
+    private readonly top: Stack,
+    private readonly windowsHost: Stack,
+    private readonly gap = 10,
+  ) {
+    super();
+    this.clipChildren = true;
+    this.add(scroll);
+  }
+
+  public override isPointInside(gx: number, gy: number): boolean {
+    const local = this.worldToLocal(gx, gy);
+    if (!local) return false;
+    return local.x >= 0 && local.y >= 0 && local.x <= this.width && local.y <= this.height;
+  }
+
+  public override render(_r: IRenderer): void {
+    const width = Math.max(0, this.width);
+    for (const row of this.rows) row.setMaxWidth(width);
+    this.scroll.x = 0;
+    this.scroll.y = 0;
+    this.scroll.width = width;
+    this.scroll.height = Math.max(0, this.height);
+    for (const child of this.windowsHost.children) {
+      if (!(child instanceof Stack)) continue;
+      const [label, close] = child.children;
+      if (!label || !close) continue;
+      close.width = 28;
+      label.width = Math.max(0, width - close.width - child.gap);
+      child.layout();
+    }
+    this.top.width = width;
+    this.top.layout();
+    this.windowsHost.width = width;
+    this.windowsHost.layout();
+    this.top.x = 0;
+    this.top.y = 0;
+    this.windowsHost.x = 0;
+    this.windowsHost.y = this.top.height + this.gap;
+    this.scroll.content.width = width;
+    this.scroll.content.height = this.windowsHost.y + this.windowsHost.height;
+  }
+}
 
 class SysmonRoot extends ClientRoot {
   private readonly rows: Text[];
@@ -32,24 +79,29 @@ class SysmonRoot extends ClientRoot {
     const windowsHost = new Stack({ direction: 'vertical', gap: 2 });
     windowsHost.interactive = false;
 
-    super(
-      vstack(
-        [
-          t('System Telemetry', 16),
-          t('Live VectoJS scene statistics.', 12, '#475569', false),
-          vmt,
-          a11y,
-          frames,
-          budget,
-          dpr,
-          t('Windows', 14),
-          p('Click a row to focus, ✕ to close.', 11),
-          windowsHost,
-        ],
-        8,
-      ),
-      18,
+    const top = vstack(
+      [
+        t('System Telemetry', 16),
+        t('Live VectoJS scene statistics.', 12, '#475569', false),
+        vmt,
+        a11y,
+        frames,
+        budget,
+        dpr,
+        t('Windows', 14),
+        p('Click a row to focus, ✕ to close.', 11),
+      ],
+      8,
     );
+    const scroll = new ScrollView({
+      width: 400,
+      height: 120,
+      scrollPhysics: DOCUMENT_SCROLL_PHYSICS,
+    });
+    scroll.content.add(top, windowsHost);
+    const layout = new SysmonLayout(scroll, rows, top, windowsHost);
+
+    super(layout, 18);
     this.rows = rows;
     this.windowsHost = windowsHost;
     this.wm = wm;
@@ -110,7 +162,9 @@ class SysmonRoot extends ClientRoot {
         this.scene?.markDirty();
       });
       close.height = 22;
-      this.windowsHost.add(hstack([label, close], 4));
+      const row = hstack([label, close], 4);
+      row.height = 22;
+      this.windowsHost.add(row);
     }
   }
 

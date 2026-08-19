@@ -13,8 +13,8 @@
 
 import type { AppDefinition } from '@vectojs/desktop';
 import { Entity, type IRenderer } from '@vectojs/core';
-import { DOCUMENT_SCROLL_PHYSICS, ScrollView } from '@vectojs/ui';
-import { btn, ClientRoot, hstack, p, t, ThemedInput, vstack } from '../app/ui-helpers';
+import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
+import { btn, ClientRoot, p, t, ThemedInput, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
 interface Page {
@@ -81,12 +81,33 @@ class BrowserLayout extends Entity {
   }
 
   public override render(_r: IRenderer): void {
+    const width = Math.max(0, this.width);
+    const navBar = this.top.children[0];
+    if (navBar instanceof Stack) {
+      navBar.maxWidth = width;
+      navBar.layout();
+    }
+    const addressBar = this.top.children[1];
+    if (addressBar instanceof Entity) addressBar.width = width;
+    const pageTitle = this.top.children[3];
+    if (pageTitle instanceof Text && pageTitle.maxWidth !== width) pageTitle.setMaxWidth(width);
+    const status = this.bottom.children[1];
+    if (status instanceof Text && status.maxWidth !== width) status.setMaxWidth(width);
+    const bodyText = this.scroll.content.children[0];
+    if (bodyText instanceof Text && bodyText.maxWidth !== width) bodyText.setMaxWidth(width);
+    this.top.width = width;
+    if (this.top instanceof Stack) this.top.layout();
+    this.bottom.width = width;
+    if (this.bottom instanceof Stack) this.bottom.layout();
     this.top.x = 0;
     this.top.y = 0;
     const scrollY = this.top.height + this.gap;
     this.scroll.x = 0;
     this.scroll.y = scrollY;
+    this.scroll.width = width;
     this.scroll.height = Math.max(0, this.height - scrollY - this.gap - this.bottom.height);
+    this.scroll.content.width = width;
+    this.scroll.content.height = Math.max(bodyText?.height ?? 0, this.scroll.height);
     this.bottom.x = 0;
     this.bottom.y = this.height - this.bottom.height;
   }
@@ -197,17 +218,17 @@ export const browserApp: AppDefinition = {
       if (e.key === 'Enter') navigate(addressBar.value);
     });
 
-    const navBar = hstack(
-      [
-        btn('◀ Back', false, goBack),
-        btn('Forward ▶', false, goForward),
-        btn('🏠 Home', false, () => navigate(HOME)),
-        btn('📖 Docs', false, () => navigate('vectojs://docs')),
-        btn('🎨 Gallery', false, () => navigate('vectojs://gallery')),
-        btn('🗺 Roadmap', false, () => navigate('vectojs://roadmap')),
-      ],
-      6,
-    );
+    const navBar = new Stack({ direction: 'horizontal', gap: 6, wrap: true });
+    for (const button of [
+      btn('◀ Back', false, goBack),
+      btn('Forward ▶', false, goForward),
+      btn('🏠 Home', false, () => navigate(HOME)),
+      btn('📖 Docs', false, () => navigate('vectojs://docs')),
+      btn('🎨 Gallery', false, () => navigate('vectojs://gallery')),
+      btn('🗺 Roadmap', false, () => navigate('vectojs://roadmap')),
+    ]) {
+      navBar.add(button);
+    }
 
     const top = vstack([navBar, addressBar, new HRule(), pageTitle], 10);
     const bottom = vstack([new HRule(), status], 10);

@@ -77,7 +77,7 @@ class CalculatorRoot extends Entity {
         b.width = btnW;
         x += btnW + GAP;
       }
-      y += BTN_H + 8;
+      y += BTN_H + 7;
     }
   }
 

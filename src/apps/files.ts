@@ -4,11 +4,38 @@
  */
 
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
-import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack } from '@vectojs/ui';
-import { btn, ClientRoot, hstack, p, t, vstack } from '../app/ui-helpers';
+import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
+import { btn, p, ScrollableClientRoot, t } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
 type VfsEntry = Awaited<ReturnType<Vfs['list']>>[number];
+
+class FilesContent extends Stack {
+  constructor(
+    private readonly navBar: Stack,
+    private readonly list: ScrollView,
+    private readonly rows: Stack,
+    private readonly responsiveText: Text[],
+  ) {
+    super({ direction: 'vertical', gap: 12 });
+  }
+
+  public override layout(): void {
+    const width = Math.max(0, this.width);
+    this.navBar.maxWidth = width;
+    this.navBar.layout();
+    this.list.width = width;
+    for (const row of this.rows.children) row.width = width;
+    this.rows.width = width;
+    this.rows.layout();
+    this.list.content.width = width;
+    this.list.content.height = Math.max(this.rows.height, this.list.height);
+    for (const text of this.responsiveText) {
+      if (text.maxWidth !== width) text.setMaxWidth(width);
+    }
+    super.layout();
+  }
+}
 
 export const filesApp: AppDefinition = {
   id: 'files',
@@ -99,44 +126,56 @@ export const filesApp: AppDefinition = {
       preview.scene?.markDirty();
     };
 
-    const navBar = hstack(
-      [
-        btn('📁 Root', false, () => {
-          currentDir = '/';
-          void refresh();
-        }),
-        btn('📄 /docs', false, () => {
-          currentDir = '/docs';
-          void refresh();
-        }),
-        btn('📝 /notes', false, () => {
-          currentDir = '/notes';
-          void refresh();
-        }),
-        btn('🔄 Refresh', false, () => {
-          void refresh();
-        }),
-        btn('🌱 Seed Samples', true, () => {
-          void seedSamples(ctx.vfs).then(refresh);
-        }),
-      ],
-      6,
-    );
+    const navBar = new Stack({ direction: 'horizontal', gap: 6, wrap: true });
+    for (const button of [
+      btn('📁 Root', false, () => {
+        currentDir = '/';
+        void refresh();
+      }),
+      btn('📄 /docs', false, () => {
+        currentDir = '/docs';
+        void refresh();
+      }),
+      btn('📝 /notes', false, () => {
+        currentDir = '/notes';
+        void refresh();
+      }),
+      btn('🔄 Refresh', false, () => {
+        void refresh();
+      }),
+      btn('🌱 Seed Samples', true, () => {
+        void seedSamples(ctx.vfs).then(refresh);
+      }),
+    ]) {
+      navBar.add(button);
+    }
 
-    const stack = vstack(
-      [
-        pathLabel,
-        navBar,
-        t('Items (click a file to preview, a folder to open)', 14, '#1e293b', true, 460),
-        scroll,
-        new HRule(),
-        t('Preview', 14, '#1e293b', true, 460),
-        preview,
-        countLabel,
-      ],
-      12,
+    const itemsTitle = t('Items (click a file to preview, a folder to open)', 14);
+    const previewTitle = t('Preview', 14);
+    const content = new FilesContent(navBar, scroll, rowsHost, [
+      pathLabel,
+      itemsTitle,
+      previewTitle,
+      preview,
+      countLabel,
+    ]);
+    for (const child of [
+      pathLabel,
+      navBar,
+      itemsTitle,
+      scroll,
+      new HRule(),
+      previewTitle,
+      preview,
+      countLabel,
+    ]) {
+      content.add(child);
+    }
+    const root = new ScrollableClientRoot(
+      content,
+      [pathLabel, itemsTitle, previewTitle, preview, countLabel],
+      18,
     );
-    const root = new ClientRoot(stack, 18);
     void refresh().then(() => {
       preview.setText('Select a file to preview its contents.');
       preview.scene?.markDirty();
