@@ -4,7 +4,7 @@
  */
 
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
-import { Button, DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack } from '@vectojs/ui';
+import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, vstack } from '../app/ui-helpers';
 import { HRule } from './_hrule';
 
@@ -23,7 +23,7 @@ export const filesApp: AppDefinition = {
     let currentDir = '/';
     const pathLabel = t('Location: /', 14);
     const preview = p('');
-    const countLabel = p('0 items', 11, '#94a3b8');
+    const countLabel = p('0 items', 11);
     // Scrollable list region: rows stack inside a ScrollView so a long listing
     // scrolls instead of clipping (the outer vstack lays out once).
     const rowsHost = new Stack({ direction: 'vertical', gap: 2 });
@@ -72,19 +72,10 @@ export const filesApp: AppDefinition = {
       }
       for (const e of entries) {
         const icon = e.kind === 'dir' ? '📁' : '📄';
-        const row = new Button(`${icon} ${e.name}  (${e.size} B)`, {
-          bg: '#f8fafc',
-          hoverBg: '#e2e8f0',
-          color: '#0f172a',
-          font: '500 12px "Segoe UI", system-ui, sans-serif',
-          padding: 6,
-          radius: 4,
-          height: 26,
-          onClick: () => {
-            void openEntry(e.name, e.kind);
-          },
+        const row = btn(`${icon} ${e.name}  (${e.size} B)`, false, () => {
+          void openEntry(e.name, e.kind);
         });
-        row.a11yProjection = 'eager';
+        row.height = 26;
         rowsHost.add(row);
       }
       syncScrollSize();

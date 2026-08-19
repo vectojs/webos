@@ -5,7 +5,7 @@
 
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
 import { Text, TextArea } from '@vectojs/ui';
-import { btn, ClientRoot, hstack, p, vstack } from '../app/ui-helpers';
+import { btn, ClientRoot, hstack, p, ThemedTextArea, vstack } from '../app/ui-helpers';
 
 let noteCounter = 0;
 
@@ -21,7 +21,7 @@ export const notesApp: AppDefinition = {
   create: (ctx: AppContext) => {
     noteCounter++;
     const path = `/notes/note-${noteCounter}.txt`;
-    const area = new TextArea({
+    const area = new ThemedTextArea({
       value: 'Welcome to VectoJS Notes!\nEdit your notes and save directly to VFS.\n',
       placeholder: 'Type your note…',
       font: '13px "Consolas", monospace',

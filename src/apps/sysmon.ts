@@ -7,8 +7,8 @@
 
 import type { Entity } from '@vectojs/core';
 import type { AppDefinition, WindowManager } from '@vectojs/desktop';
-import { Button, Stack, Text } from '@vectojs/ui';
-import { ClientRoot, hstack, t, vstack } from '../app/ui-helpers';
+import { Stack, Text } from '@vectojs/ui';
+import { btn, ClientRoot, hstack, p, t, themedButton, vstack } from '../app/ui-helpers';
 import { isWindowVisible } from '../app/window-utils';
 import { FrameSampler } from '../model/telemetry';
 
@@ -22,17 +22,12 @@ class SysmonRoot extends ClientRoot {
   private lastFrameAt = 0;
 
   constructor(wm: WindowManager) {
-    const vmt = new Text('', { font: '500 12px monospace', color: '#0f172a' });
-    const a11y = new Text('', { font: '500 12px monospace', color: '#0f172a' });
-    const frames = new Text('', {
-      font: '500 12px monospace',
-      color: '#0f172a',
+    const rows = ['', '', '', '', ''].map((content) => {
+      const row = t(content, 12);
+      row.font = '500 12px monospace';
+      return row;
     });
-    const budget = new Text('', {
-      font: '500 12px monospace',
-      color: '#0f172a',
-    });
-    const dpr = new Text('', { font: '500 12px monospace', color: '#0f172a' });
+    const [vmt, a11y, frames, budget, dpr] = rows;
 
     const windowsHost = new Stack({ direction: 'vertical', gap: 2 });
     windowsHost.interactive = false;
@@ -48,14 +43,14 @@ class SysmonRoot extends ClientRoot {
           budget,
           dpr,
           t('Windows', 14),
-          t('Click a row to focus, ✕ to close.', 11, '#94a3b8', false),
+          p('Click a row to focus, ✕ to close.', 11),
           windowsHost,
         ],
         8,
       ),
       18,
     );
-    this.rows = [vmt, a11y, frames, budget, dpr];
+    this.rows = rows;
     this.windowsHost = windowsHost;
     this.wm = wm;
   }
@@ -99,43 +94,22 @@ class SysmonRoot extends ClientRoot {
     }
     const wins = this.wm.list();
     if (wins.length === 0) {
-      const empty = new Text('(no windows)', {
-        font: '400 11px "Segoe UI", system-ui, sans-serif',
-        color: '#94a3b8',
-      });
+      const empty = p('(no windows)', 11);
       this.windowsHost.add(empty);
       return;
     }
     for (const w of wins) {
       const glyph = w.minimized ? '▁' : w.focused ? '▮' : '□';
-      const label = new Button(`${glyph} ${w.title}  (${w.appId})`, {
-        bg: '#f8fafc',
-        hoverBg: '#e2e8f0',
-        color: '#0f172a',
-        font: '500 11px "Segoe UI", system-ui, sans-serif',
-        padding: 4,
-        radius: 4,
-        height: 22,
-        onClick: () => {
-          this.wm.focus(w);
-          this.scene?.markDirty();
-        },
+      const label = btn(`${glyph} ${w.title}  (${w.appId})`, false, () => {
+        this.wm.focus(w);
+        this.scene?.markDirty();
       });
-      label.a11yProjection = 'eager';
-      const close = new Button('✕', {
-        bg: '#fee2e2',
-        hoverBg: '#fecaca',
-        color: '#b91c1c',
-        font: '700 11px "Segoe UI", system-ui, sans-serif',
-        padding: 4,
-        radius: 4,
-        height: 22,
-        onClick: () => {
-          this.wm.close(w);
-          this.scene?.markDirty();
-        },
+      label.height = 22;
+      const close = themedButton('✕', 'danger', () => {
+        this.wm.close(w);
+        this.scene?.markDirty();
       });
-      close.a11yProjection = 'eager';
+      close.height = 22;
       this.windowsHost.add(hstack([label, close], 4));
     }
   }

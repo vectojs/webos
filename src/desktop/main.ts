@@ -5,6 +5,7 @@
 import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
 import { buildConfig, persistTheme, svgDataUrl } from '../config';
+import { setAppTheme } from '../model/app-theme';
 import { findPreset } from '../model/themes';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 
@@ -25,6 +26,7 @@ let shell: DesktopShell;
 
 function applyTheme(presetId: string): void {
   const target = findPreset(presetId) ?? findPreset('aero')!;
+  setAppTheme(target);
   shell.setTheme(
     {
       ...target.tokens,
