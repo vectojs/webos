@@ -8,6 +8,7 @@ import { Entity } from '@vectojs/core';
 import type { AppDefinition, Vfs } from '@vectojs/desktop';
 import { isWindowFocused, isWindowVisible } from '../app/window-utils';
 import { executeCommand, trimHistory } from '../model/terminal';
+import { appIconSvg } from '../desktop/icons';
 
 const PROMPT = 'user@vectojs:~$ ';
 const FONT = '12px "Consolas", "Fira Code", monospace';
@@ -188,7 +189,7 @@ export function createTerminalApp(opts: TerminalAppOptions): AppDefinition {
   return {
     id: 'terminal',
     title: 'Terminal',
-    icon: '💻',
+    iconSvg: appIconSvg('terminal'),
     instances: 'multiple',
     defaultWidth: 620,
     defaultHeight: 400,

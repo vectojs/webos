@@ -57,6 +57,13 @@ describe('boot smoke', () => {
     expect(tree).toContain('button'); // taskbar entries / chrome buttons
   });
 
+  it('uses stable SVG icons for every registered app', () => {
+    const { shell } = api();
+    expect(shell.config.apps).toHaveLength(10);
+    expect(shell.config.apps.every((app) => typeof app.iconSvg === 'string')).toBe(true);
+    expect(shell.config.apps.every((app) => app.icon === undefined)).toBe(true);
+  });
+
   it('keeps every app inside its minimum window geometry', async () => {
     const { scene, shell } = api();
     const specs = [

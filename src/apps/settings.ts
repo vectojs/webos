@@ -5,6 +5,7 @@
 
 import type { AppDefinition } from '@vectojs/desktop';
 import { btn, p, ScrollableClientRoot, t, vstack } from '../app/ui-helpers';
+import { appIconSvg } from '../desktop/icons';
 import { HRule } from './_hrule';
 import { THEME_PRESETS } from '../model/themes';
 
@@ -16,7 +17,7 @@ export function createSettingsApp(opts: SettingsAppOptions): AppDefinition {
   return {
     id: 'settings',
     title: 'Personalization',
-    icon: '🎨',
+    iconSvg: appIconSvg('settings'),
     instances: 'single',
     defaultWidth: 620,
     defaultHeight: 460,

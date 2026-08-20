@@ -15,6 +15,7 @@ import type { AppDefinition } from '@vectojs/desktop';
 import { Entity, type IRenderer } from '@vectojs/core';
 import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, ClientRoot, p, t, ThemedInput, vstack } from '../app/ui-helpers';
+import { appIconSvg } from '../desktop/icons';
 import { HRule } from './_hrule';
 
 interface Page {
@@ -116,7 +117,7 @@ class BrowserLayout extends Entity {
 export const browserApp: AppDefinition = {
   id: 'browser',
   title: 'Web Browser',
-  icon: '🌐',
+  iconSvg: appIconSvg('browser'),
   instances: 'single',
   defaultWidth: 640,
   defaultHeight: 460,
