@@ -13,6 +13,7 @@ import type { AppContext, AppDefinition } from '@vectojs/desktop';
 import { Button, Text } from '@vectojs/ui';
 import { btn, t } from '../app/ui-helpers';
 import { isWindowFocused } from '../app/window-utils';
+import { appIconSvg } from '../desktop/icons';
 import { CalculatorModel, type CalcOp } from '../model/calculator';
 
 const OP_KEYS = ['÷', '×', '-', '+'];
@@ -146,7 +147,7 @@ class CalculatorRoot extends Entity {
 export const calculatorApp: AppDefinition = {
   id: 'calculator',
   title: 'Calculator',
-  icon: '🔢',
+  iconSvg: appIconSvg('calculator'),
   instances: 'single',
   defaultWidth: 280,
   defaultHeight: 330,

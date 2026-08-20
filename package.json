@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@vectojs/core": "1.36.0",
-    "@vectojs/desktop": "0.5.0",
+    "@vectojs/desktop": "0.6.0",
     "@vectojs/devtools": "0.11.1",
     "@vectojs/styles": "0.3.2",
     "@vectojs/ui": "2.16.7"

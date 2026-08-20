@@ -7,6 +7,7 @@ import type { IRenderer } from '@vectojs/core';
 import { Entity } from '@vectojs/core';
 import type { AppDefinition } from '@vectojs/desktop';
 import { isWindowVisible } from '../app/window-utils';
+import { appIconSvg } from '../desktop/icons';
 
 class ClockRoot extends Entity {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -94,7 +95,7 @@ function drawHand(
 export const clockApp: AppDefinition = {
   id: 'clock',
   title: 'Clock',
-  icon: '🕒',
+  iconSvg: appIconSvg('clock'),
   instances: 'single',
   defaultWidth: 320,
   defaultHeight: 260,

@@ -11,7 +11,7 @@ import { Text } from '@vectojs/ui';
 interface IconDef {
   /** Full `<svg>` source for the 24x24 viewBox icon. */
   svg: string;
-  /** Emoji fallback label shown while the SVG rasterizes. */
+  /** Legacy text fallback for consumers that cannot render SVG. */
   emoji: string;
 }
 
@@ -108,6 +108,11 @@ const ICON_DEFS: Record<string, IconDef> = {
     svgPath('M7 8l3 3-3 3M12 14h5', '', { stroke: '#38bdf8', strokeWidth: 2 }),
   ),
 };
+
+/** Return the stable SVG source used by shell chrome for an app id. */
+export function appIconSvg(appId: string): string | undefined {
+  return ICON_DEFS[appId]?.svg;
+}
 
 export interface DesktopIconSpec {
   id: string;

@@ -10,6 +10,7 @@ import type { AppDefinition, WindowManager } from '@vectojs/desktop';
 import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, themedButton, vstack } from '../app/ui-helpers';
 import { isWindowVisible } from '../app/window-utils';
+import { appIconSvg } from '../desktop/icons';
 import { FrameSampler } from '../model/telemetry';
 
 class SysmonLayout extends Entity {
@@ -203,7 +204,7 @@ function fmt(v: number | null): string {
 export const sysmonApp: AppDefinition = {
   id: 'sysmon',
   title: 'Task Manager',
-  icon: '📊',
+  iconSvg: appIconSvg('sysmon'),
   instances: 'single',
   defaultWidth: 460,
   defaultHeight: 420,

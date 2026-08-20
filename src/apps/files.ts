@@ -7,6 +7,7 @@ import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
 import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, p, ScrollableClientRoot, t } from '../app/ui-helpers';
 import { HRule } from './_hrule';
+import { appIconSvg } from '../desktop/icons';
 
 type VfsEntry = Awaited<ReturnType<Vfs['list']>>[number];
 
@@ -40,7 +41,7 @@ class FilesContent extends Stack {
 export const filesApp: AppDefinition = {
   id: 'files',
   title: 'Computer',
-  icon: '📁',
+  iconSvg: appIconSvg('files'),
   instances: 'single',
   defaultWidth: 580,
   defaultHeight: 470,

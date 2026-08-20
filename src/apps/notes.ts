@@ -7,6 +7,7 @@ import { Entity, type IRenderer } from '@vectojs/core';
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
 import { Stack, Text, TextArea } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, ThemedTextArea } from '../app/ui-helpers';
+import { appIconSvg } from '../desktop/icons';
 
 let noteCounter = 0;
 
@@ -45,7 +46,7 @@ class NotesLayout extends Entity {
 export const notesApp: AppDefinition = {
   id: 'notes',
   title: 'Untitled - Notepad',
-  icon: '📝',
+  iconSvg: appIconSvg('notes'),
   instances: 'multiple',
   defaultWidth: 540,
   defaultHeight: 420,

@@ -4,12 +4,13 @@
 
 import type { AppDefinition } from '@vectojs/desktop';
 import { p, ScrollableClientRoot, t, vstack } from '../app/ui-helpers';
+import { appIconSvg } from '../desktop/icons';
 import { HRule } from './_hrule';
 
 export const aboutApp: AppDefinition = {
   id: 'about',
   title: 'About VectoJS WebOS',
-  icon: '💻',
+  iconSvg: appIconSvg('about'),
   instances: 'single',
   defaultWidth: 520,
   defaultHeight: 440,
