@@ -35,6 +35,8 @@ class ThemedText extends Text {
 type ButtonRole = 'primary' | 'secondary' | 'danger';
 
 class ThemedButton extends Button {
+  private pressed = false;
+
   constructor(
     label: string,
     private readonly role: ButtonRole,
@@ -59,7 +61,16 @@ class ThemedButton extends Button {
           ? theme.danger
           : theme.text;
     this.focusColor = theme.focus;
+    const idleBg = this.bg;
+    if (this.pressed && !this.disabled) this.bg = this.hoverBg;
     super.render(renderer);
+    this.bg = idleBg;
+  }
+
+  public setPressed(pressed: boolean): void {
+    if (this.pressed === pressed) return;
+    this.pressed = pressed;
+    this.scene?.markDirty();
   }
 }
 
@@ -148,6 +159,11 @@ export function themedButton(label: string, role: ButtonRole, onClick: () => voi
     onClick,
   });
   b.a11yProjection = 'eager';
+  const themed = b as ThemedButton;
+  b.on('pointerdown', () => themed.setPressed(true));
+  b.on('pointerup', () => themed.setPressed(false));
+  b.on('pointercancel', () => themed.setPressed(false));
+  b.on('pointerleave', () => themed.setPressed(false));
   return b;
 }
 

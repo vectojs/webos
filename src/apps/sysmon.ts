@@ -153,7 +153,8 @@ class SysmonRoot extends ClientRoot {
     }
     for (const w of wins) {
       const glyph = w.minimized ? '▁' : w.focused ? '▮' : '□';
-      const label = btn(`${glyph} ${w.title}  (${w.appId})`, false, () => {
+      const state = w.focused ? 'focused' : w.minimized ? 'minimized' : 'open';
+      const label = btn(`${glyph} ${w.title}  (${w.appId}, ${state})`, false, () => {
         this.wm.focus(w);
         this.scene?.markDirty();
       });

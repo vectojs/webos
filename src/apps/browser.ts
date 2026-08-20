@@ -201,17 +201,28 @@ export const browserApp: AppDefinition = {
       history.push(target);
       historyIndex = history.length - 1;
       void render();
+      syncNavigationState();
     };
+    let backButton: ReturnType<typeof btn>;
+    let forwardButton: ReturnType<typeof btn>;
+
+    const syncNavigationState = (): void => {
+      backButton.disabled = historyIndex <= 0;
+      forwardButton.disabled = historyIndex >= history.length - 1;
+    };
+
     const goBack = (): void => {
       if (historyIndex > 0) {
         historyIndex--;
         void render();
+        syncNavigationState();
       }
     };
     const goForward = (): void => {
       if (historyIndex < history.length - 1) {
         historyIndex++;
         void render();
+        syncNavigationState();
       }
     };
 
@@ -220,9 +231,11 @@ export const browserApp: AppDefinition = {
     });
 
     const navBar = new Stack({ direction: 'horizontal', gap: 6, wrap: true });
+    backButton = btn('◀ Back', false, goBack);
+    forwardButton = btn('Forward ▶', false, goForward);
     for (const button of [
-      btn('◀ Back', false, goBack),
-      btn('Forward ▶', false, goForward),
+      backButton,
+      forwardButton,
       btn('🏠 Home', false, () => navigate(HOME)),
       btn('📖 Docs', false, () => navigate('vectojs://docs')),
       btn('🎨 Gallery', false, () => navigate('vectojs://gallery')),
@@ -230,6 +243,7 @@ export const browserApp: AppDefinition = {
     ]) {
       navBar.add(button);
     }
+    syncNavigationState();
 
     const top = vstack([navBar, addressBar, new HRule(), pageTitle], 10);
     const bottom = vstack([new HRule(), status], 10);

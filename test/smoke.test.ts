@@ -4,6 +4,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { Entity } from '@vectojs/core';
+import { Button } from '@vectojs/ui';
 import type { Scene } from '@vectojs/core';
 import type { DesktopShell } from '@vectojs/desktop';
 
@@ -88,5 +90,39 @@ describe('boot smoke', () => {
       const overflow = (await api().audit()).filter((finding) => finding.kind !== 'overlap');
       expect(overflow, `${appId} overflowed at ${width}x${height}`).toEqual([]);
     }
+  });
+
+  it('projects disabled browser history controls and focused window state', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    shell.open('browser');
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+    const descendants = (root: Entity): Entity[] => {
+      const result: Entity[] = [];
+      const visit = (entity: Entity): void => {
+        result.push(entity);
+        for (const child of entity.children) visit(child);
+      };
+      visit(root);
+      return result;
+    };
+
+    const browser = shell.windowManager.list().find((win) => win.appId === 'browser');
+    if (!browser) throw new Error('Missing browser window');
+    const browserButtons = descendants(browser).filter(
+      (entity): entity is Button => entity instanceof Button,
+    );
+    expect(browserButtons.find((button) => button.label === '◀ Back')?.disabled).toBe(true);
+    expect(browserButtons.find((button) => button.label === 'Forward ▶')?.disabled).toBe(true);
+
+    shell.open('sysmon');
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+    const sysmon = shell.windowManager.list().find((win) => win.appId === 'sysmon');
+    if (!sysmon) throw new Error('Missing sysmon window');
+    expect(
+      descendants(sysmon).some(
+        (entity) => entity instanceof Button && entity.label.includes('(browser, focused)'),
+      ),
+    ).toBe(true);
   });
 });
