@@ -10,6 +10,7 @@
     "format:check": "oxfmt --check \"{src,test,scripts}/**/*.{js,ts,jsx,tsx,mjs,cjs,json}\"",
     "lint": "oxlint --deny-warnings src test",
     "test": "bun test",
+    "test:release-matrix": "bash scripts/release-matrix.sh",
     "format": "oxfmt --write \"{src,test,scripts}/**/*.{js,ts,jsx,tsx,mjs,cjs,json}\"",
     "lint:md": "markdownlint-cli2 \"**/*.md\"",
     "check": "bun run format:check && bun run lint && bun run lint:md",
