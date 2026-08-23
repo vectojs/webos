@@ -11,8 +11,6 @@ import { Text } from '@vectojs/ui';
 interface IconDef {
   /** Full `<svg>` source for the 24x24 viewBox icon. */
   svg: string;
-  /** Legacy text fallback for consumers that cannot render SVG. */
-  emoji: string;
 }
 
 function svgPath(
@@ -26,19 +24,17 @@ function svgPath(
   return `<path d="${d}"${strokeAttr}/>`;
 }
 
-function iconDef(emoji: string, ...paths: string[]): IconDef {
+function iconDef(...paths: string[]): IconDef {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">${paths.join('')}</svg>`;
-  return { svg, emoji };
+  return { svg };
 }
 
 const ICON_DEFS: Record<string, IconDef> = {
   terminal: iconDef(
-    '💻',
     svgPath('M3 3h18a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', '#0f172a'),
     svgPath('M7 8l4 4-4 4M13 16h5', '', { stroke: '#22c55e', strokeWidth: 2 }),
   ),
   files: iconDef(
-    '📁',
     svgPath(
       'M4 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8L10 4H4z',
       '#f59e0b',
@@ -46,7 +42,6 @@ const ICON_DEFS: Record<string, IconDef> = {
     svgPath('M2 10h20v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8z', '#fbbf24'),
   ),
   notes: iconDef(
-    '📝',
     svgPath('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z', '#38bdf8'),
     svgPath('M14 2v6h6M8 13h8M8 17h5', '', {
       stroke: '#ffffff',
@@ -54,12 +49,10 @@ const ICON_DEFS: Record<string, IconDef> = {
     }),
   ),
   paint: iconDef(
-    '🎨',
     svgPath('M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z', '#f43f5e'),
     svgPath('M3 21h18', '', { stroke: '#fbbf24', strokeWidth: 2 }),
   ),
   browser: iconDef(
-    '🌐',
     svgPath('M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z', '#0ea5e9'),
     svgPath(
       'M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
@@ -68,7 +61,6 @@ const ICON_DEFS: Record<string, IconDef> = {
     ),
   ),
   calculator: iconDef(
-    '🔢',
     svgPath('M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z', '#3b82f6'),
     svgPath(
       'M8 5h8v3H8V5zm0 6h2v2H8v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 4h2v2H8v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 4h2v2H8v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z',
@@ -76,7 +68,6 @@ const ICON_DEFS: Record<string, IconDef> = {
     ),
   ),
   sysmon: iconDef(
-    '📊',
     svgPath('M3 3h18a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', '#10b981'),
     svgPath('M4 13h3.5l2.5-6 4 11 2.5-5H20', '', {
       stroke: '#ffffff',
@@ -84,7 +75,6 @@ const ICON_DEFS: Record<string, IconDef> = {
     }),
   ),
   settings: iconDef(
-    '🎨',
     svgPath(
       'M12 2C6.49 2 2 6.49 2 12c0 5.51 4.49 10 10 10a2.5 2.5 0 0 0 2.5-2.5c0-.65-.25-1.24-.66-1.68-.41-.44-.66-1.04-.66-1.68 0-1.38 1.12-2.5 2.5-2.5h1.82c3.08 0 5.5-2.42 5.5-5.5C22 5.61 17.51 2 12 2z',
       '#ec4899',
@@ -95,12 +85,10 @@ const ICON_DEFS: Record<string, IconDef> = {
     ),
   ),
   clock: iconDef(
-    '🕒',
     svgPath('M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z', '#6366f1'),
     svgPath('M12 6v6l4 2.5', '', { stroke: '#ffffff', strokeWidth: 2 }),
   ),
   about: iconDef(
-    '💻',
     svgPath(
       'M20 3H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h4l-2 3v1h12v-1l-2-3h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z',
       '#64748b',
