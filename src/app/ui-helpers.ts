@@ -3,7 +3,7 @@
  * `r.*` API, never the raw `ctx`.
  */
 
-import { Entity, type IRenderer } from '@vectojs/core';
+import { Entity, type A11yAttributes, type IRenderer } from '@vectojs/core';
 import {
   Button,
   DOCUMENT_SCROLL_PHYSICS,
@@ -36,6 +36,7 @@ type ButtonRole = 'primary' | 'secondary' | 'danger';
 
 class ThemedButton extends Button {
   private pressed = false;
+  private a11yName: string | null = null;
 
   constructor(
     label: string,
@@ -43,6 +44,20 @@ class ThemedButton extends Button {
     options: ConstructorParameters<typeof Button>[1],
   ) {
     super(label, options);
+  }
+
+  /**
+   * Accessible name projected instead of the visual label — decorative
+   * glyphs stay visible on the canvas while AT users hear plain words.
+   */
+  public setA11yName(name: string): void {
+    this.a11yName = name;
+  }
+
+  public override getA11yAttributes(): A11yAttributes {
+    const attrs = super.getA11yAttributes();
+    if (this.a11yName) attrs.label = this.a11yName;
+    return attrs;
   }
 
   public override render(renderer: IRenderer): void {
@@ -136,11 +151,21 @@ export function p(content: string, size = 12, color = '#475569', maxWidth?: numb
   return el;
 }
 
-export function btn(label: string, primary: boolean, onClick: () => void): Button {
-  return themedButton(label, primary ? 'primary' : 'secondary', onClick);
+export function btn(
+  label: string,
+  primary: boolean,
+  onClick: () => void,
+  a11yName?: string,
+): Button {
+  return themedButton(label, primary ? 'primary' : 'secondary', onClick, a11yName);
 }
 
-export function themedButton(label: string, role: ButtonRole, onClick: () => void): Button {
+export function themedButton(
+  label: string,
+  role: ButtonRole,
+  onClick: () => void,
+  a11yName?: string,
+): Button {
   const theme = appTheme();
   const b = new ThemedButton(label, role, {
     bg:
@@ -158,6 +183,7 @@ export function themedButton(label: string, role: ButtonRole, onClick: () => voi
     height: 28,
     onClick,
   });
+  if (a11yName) (b as ThemedButton).setA11yName(a11yName);
   b.a11yProjection = 'eager';
   const themed = b as ThemedButton;
   b.on('pointerdown', () => themed.setPressed(true));
