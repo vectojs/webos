@@ -314,6 +314,25 @@ export class DesktopClickCatcher extends Entity {
       const p = this.point(e);
       this.onMarquee(this.rect(p.x, p.y), true);
     });
+    // A gesture can end without a pointerup on this surface: the browser may
+    // cancel it, or the pointer may leave the canvas mid-drag. Without these
+    // resets, dragging/moved latch and later buttonless pointermove keeps
+    // drawing marquees (same defensive pattern as ThemedButton).
+    this.on('pointercancel', () => this.abandonDrag());
+    this.on('pointerleave', () => this.abandonDrag());
+  }
+
+  /** Drop an in-flight drag: no spurious click, any latched marquee collapsed. */
+  private abandonDrag(): void {
+    if (!this.dragging) return;
+    this.dragging = false;
+    const hadMoved = this.moved;
+    this.moved = false;
+    if (hadMoved) {
+      // final=true hides the marquee overlay again and clears the
+      // rubber-band selection made so far.
+      this.onMarquee({ x: this.startX, y: this.startY, w: 0, h: 0 }, true);
+    }
   }
 
   public override getA11yAttributes() {
