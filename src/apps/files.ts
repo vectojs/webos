@@ -100,9 +100,16 @@ export const filesApp: AppDefinition = {
       }
       for (const e of entries) {
         const icon = e.kind === 'dir' ? '📁' : '📄';
-        const row = btn(`${icon} ${e.name}  (${e.size} B)`, false, () => {
-          void openEntry(e.name, e.kind);
-        });
+        const name = `${e.name}  (${e.size} B)`;
+        // Glyph is decoration; the accessible name carries plain text only.
+        const row = btn(
+          `${icon} ${name}`,
+          false,
+          () => {
+            void openEntry(e.name, e.kind);
+          },
+          name,
+        );
         row.height = 26;
         rowsHost.add(row);
       }
@@ -129,24 +136,49 @@ export const filesApp: AppDefinition = {
 
     const navBar = new Stack({ direction: 'horizontal', gap: 6, wrap: true });
     for (const button of [
-      btn('📁 Root', false, () => {
-        currentDir = '/';
-        void refresh();
-      }),
-      btn('📄 /docs', false, () => {
-        currentDir = '/docs';
-        void refresh();
-      }),
-      btn('📝 /notes', false, () => {
-        currentDir = '/notes';
-        void refresh();
-      }),
-      btn('🔄 Refresh', false, () => {
-        void refresh();
-      }),
-      btn('🌱 Seed Samples', true, () => {
-        void seedSamples(ctx.vfs).then(refresh);
-      }),
+      btn(
+        '📁 Root',
+        false,
+        () => {
+          currentDir = '/';
+          void refresh();
+        },
+        'Root',
+      ),
+      btn(
+        '📄 /docs',
+        false,
+        () => {
+          currentDir = '/docs';
+          void refresh();
+        },
+        '/docs',
+      ),
+      btn(
+        '📝 /notes',
+        false,
+        () => {
+          currentDir = '/notes';
+          void refresh();
+        },
+        '/notes',
+      ),
+      btn(
+        '🔄 Refresh',
+        false,
+        () => {
+          void refresh();
+        },
+        'Refresh',
+      ),
+      btn(
+        '🌱 Seed Samples',
+        true,
+        () => {
+          void seedSamples(ctx.vfs).then(refresh);
+        },
+        'Seed Samples',
+      ),
     ]) {
       navBar.add(button);
     }

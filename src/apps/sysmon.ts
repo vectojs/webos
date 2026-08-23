@@ -7,11 +7,18 @@
 
 import { Entity, type IRenderer } from '@vectojs/core';
 import type { AppDefinition, WindowManager } from '@vectojs/desktop';
-import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
+import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text, type Button } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, t, themedButton, vstack } from '../app/ui-helpers';
 import { isWindowVisible } from '../app/window-utils';
 import { appIconSvg } from '../desktop/icons';
 import { FrameSampler } from '../model/telemetry';
+
+/** One reconciled window row: focus label + close button inside an hstack. */
+interface WindowRow {
+  row: Stack;
+  label: Button;
+  close: Button;
+}
 
 class SysmonLayout extends Entity {
   constructor(
@@ -64,9 +71,12 @@ class SysmonRoot extends ClientRoot {
   private readonly rows: Text[];
   private readonly windowsHost: Stack;
   private readonly wm: WindowManager;
+  /** Live window rows keyed by windowId — reused across refreshes. */
+  private readonly windowRows = new Map<string, WindowRow>();
+  private emptyRow: Text | null = null;
   private readonly sampler = new FrameSampler(120);
   private timer: ReturnType<typeof setInterval> | null = null;
-  private rafTimer: ReturnType<typeof setInterval> | null = null;
+  private frameTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFrameAt = 0;
 
   constructor(wm: WindowManager) {
@@ -109,16 +119,23 @@ class SysmonRoot extends ClientRoot {
   }
 
   protected override onMounted(): void {
-    // Frame cadence comes from rAF — independent of the scene's onDemand loop.
+    // Approximates frame cadence with a self-chained 16ms timer — independent
+    // of the scene's onDemand loop (it measures scheduler jitter around the
+    // display interval, not true rAF frames).
     this.lastFrameAt = performance.now();
     const tick = () => {
-      if (!isWindowVisible(this)) return;
+      // Reschedule FIRST: no early return below may kill the chain, or
+      // p50/max freeze permanently after the first minimize.
+      this.frameTimer = window.setTimeout(tick, 16);
       const now = performance.now();
-      this.sampler.push(now - this.lastFrameAt);
+      if (isWindowVisible(this)) {
+        this.sampler.push(now - this.lastFrameAt);
+      }
+      // Advance the timestamp even while hidden so the first sample after
+      // restore measures one tick, not the whole minimized duration.
       this.lastFrameAt = now;
-      this.rafTimer = window.setTimeout(tick, 16);
     };
-    this.rafTimer = window.setTimeout(tick, 16);
+    this.frameTimer = window.setTimeout(tick, 16);
 
     this.timer = setInterval(() => {
       if (!isWindowVisible(this)) return;
@@ -133,40 +150,82 @@ class SysmonRoot extends ClientRoot {
       clearInterval(this.timer);
       this.timer = null;
     }
-    if (this.rafTimer !== null) {
-      clearTimeout(this.rafTimer);
-      this.rafTimer = null;
+    if (this.frameTimer !== null) {
+      clearTimeout(this.frameTimer);
+      this.frameTimer = null;
     }
     super.destroy();
   }
 
   private refreshWindows(): void {
-    for (const child of [...this.windowsHost.children]) {
-      this.windowsHost.remove(child);
-      child.destroy();
-    }
     const wins = this.wm.list();
     if (wins.length === 0) {
-      const empty = p('(no windows)', 11);
-      this.windowsHost.add(empty);
+      this.clearWindowRows();
+      if (!this.emptyRow) {
+        this.emptyRow = p('(no windows)', 11);
+        this.windowsHost.add(this.emptyRow);
+      }
       return;
     }
+    if (this.emptyRow) {
+      this.windowsHost.remove(this.emptyRow);
+      this.emptyRow.destroy();
+      this.emptyRow = null;
+    }
+
+    // Drop rows whose windows closed, then reconcile the survivors: rows are
+    // reused and only relabeled when focus/minimize state changes — rebuilding
+    // every second churned entities and reset pressed/hover/a11y state.
+    const live = new Set(wins.map((w) => w.windowId));
+    for (const [id, entry] of [...this.windowRows]) {
+      if (!live.has(id)) {
+        this.clearWindowRow(id, entry);
+      }
+    }
+
     for (const w of wins) {
       const glyph = w.minimized ? '▁' : w.focused ? '▮' : '□';
       const state = w.focused ? 'focused' : w.minimized ? 'minimized' : 'open';
-      const label = btn(`${glyph} ${w.title}  (${w.appId}, ${state})`, false, () => {
-        this.wm.focus(w);
-        this.scene?.markDirty();
-      });
-      label.height = 22;
-      const close = themedButton('✕', 'danger', () => {
-        this.wm.close(w);
-        this.scene?.markDirty();
-      });
-      close.height = 22;
-      const row = hstack([label, close], 4);
-      row.height = 22;
-      this.windowsHost.add(row);
+      const text = `${glyph} ${w.title}  (${w.appId}, ${state})`;
+      let entry = this.windowRows.get(w.windowId);
+      if (!entry) {
+        const label = btn(text, false, () => {
+          this.wm.focus(w);
+          this.scene?.markDirty();
+        });
+        label.height = 22;
+        const close = themedButton(
+          '✕',
+          'danger',
+          () => {
+            this.wm.close(w);
+            this.scene?.markDirty();
+          },
+          `Close ${w.title}`,
+        );
+        close.height = 22;
+        const row = hstack([label, close], 4);
+        row.height = 22;
+        entry = { row, label, close };
+        this.windowRows.set(w.windowId, entry);
+        this.windowsHost.add(row);
+      } else if (entry.label.label !== text) {
+        entry.label.setLabel(text);
+      }
+    }
+  }
+
+  /** Remove one tracked row from the host and the reconciliation map. */
+  private clearWindowRow(id: string, entry: WindowRow): void {
+    this.windowsHost.remove(entry.row);
+    entry.row.destroy();
+    this.windowRows.delete(id);
+  }
+
+  /** Remove every tracked row (used when no windows remain). */
+  private clearWindowRows(): void {
+    for (const [id, entry] of [...this.windowRows]) {
+      this.clearWindowRow(id, entry);
     }
   }
 

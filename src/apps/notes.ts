@@ -65,16 +65,31 @@ export const notesApp: AppDefinition = {
     const status = p(`Document: ${path}`);
     const toolBar = hstack(
       [
-        btn('💾 Save', true, () => {
-          void persist(ctx.vfs, path, area.value, status);
-        }),
-        btn('🔄 Reload', false, () => {
-          void hydrate(ctx.vfs, path, area, status);
-        }),
-        btn('🗑 Clear', false, () => {
-          area.value = '';
-          area.scene?.markDirty();
-        }),
+        btn(
+          '💾 Save',
+          true,
+          () => {
+            void persist(ctx.vfs, path, area.value, status);
+          },
+          'Save',
+        ),
+        btn(
+          '🔄 Reload',
+          false,
+          () => {
+            void hydrate(ctx.vfs, path, area, status);
+          },
+          'Reload',
+        ),
+        btn(
+          '🗑 Clear',
+          false,
+          () => {
+            area.value = '';
+            area.scene?.markDirty();
+          },
+          'Clear',
+        ),
       ],
       8,
     );

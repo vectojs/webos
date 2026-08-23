@@ -86,6 +86,9 @@ class CalculatorRoot extends Entity {
     this.keyListener = (e: KeyboardEvent) => {
       // Keyboard input only while this window is focused (multi-window safe).
       if (!isWindowFocused(this)) return;
+      // Modifier chords belong to the shell or browser (Ctrl+C copy etc.) —
+      // never read as keypad keys, same guard as the terminal.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key;
       if (k >= '0' && k <= '9') {
         this.model.digit(k);

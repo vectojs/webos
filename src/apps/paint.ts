@@ -158,7 +158,7 @@ class PaintRoot extends Entity {
         r.beginPath();
         r.roundRect(s.x, s.y, s.w, s.h, 4);
         r.fill('#fee2e2');
-        r.stroke(this.currentColor === '' ? '#2563eb' : 'rgba(0,0,0,0.2)', 1);
+        r.stroke('rgba(0,0,0,0.2)', 1);
         r.fillText('Clear', s.x + 10, s.y + 15, '500 11px "Segoe UI", sans-serif', '#b91c1c');
         continue;
       }
@@ -171,13 +171,15 @@ class PaintRoot extends Entity {
       );
     }
 
-    r.fillText(
-      'Click a color, then drag on the canvas to draw',
-      this.swatches[this.swatches.length - 1]!.x + 60,
-      22,
-      '500 11px "Segoe UI", sans-serif',
-      '#475569',
-    );
+    // Hint sits right of the Clear button. IRenderer has no measureText, so
+    // budget ~5.5px per glyph at 11px and hide rather than clip when the
+    // window cannot fit it (the palette alone spans most of the minimum width).
+    const clearSwatch = this.swatches[this.swatches.length - 1]!;
+    const hintX = clearSwatch.x + clearSwatch.w + 16;
+    const hint = 'Click a color, then drag on the canvas to draw';
+    if (hintX + hint.length * 5.5 <= this.width) {
+      r.fillText(hint, hintX, 22, '500 11px "Segoe UI", sans-serif', '#475569');
+    }
   }
 }
 
