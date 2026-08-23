@@ -66,7 +66,7 @@ class SysmonRoot extends ClientRoot {
   private readonly wm: WindowManager;
   private readonly sampler = new FrameSampler(120);
   private timer: ReturnType<typeof setInterval> | null = null;
-  private rafTimer: ReturnType<typeof setInterval> | null = null;
+  private frameTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFrameAt = 0;
 
   constructor(wm: WindowManager) {
@@ -109,16 +109,23 @@ class SysmonRoot extends ClientRoot {
   }
 
   protected override onMounted(): void {
-    // Frame cadence comes from rAF — independent of the scene's onDemand loop.
+    // Approximates frame cadence with a self-chained 16ms timer — independent
+    // of the scene's onDemand loop (it measures scheduler jitter around the
+    // display interval, not true rAF frames).
     this.lastFrameAt = performance.now();
     const tick = () => {
-      if (!isWindowVisible(this)) return;
+      // Reschedule FIRST: no early return below may kill the chain, or
+      // p50/max freeze permanently after the first minimize.
+      this.frameTimer = window.setTimeout(tick, 16);
       const now = performance.now();
-      this.sampler.push(now - this.lastFrameAt);
+      if (isWindowVisible(this)) {
+        this.sampler.push(now - this.lastFrameAt);
+      }
+      // Advance the timestamp even while hidden so the first sample after
+      // restore measures one tick, not the whole minimized duration.
       this.lastFrameAt = now;
-      this.rafTimer = window.setTimeout(tick, 16);
     };
-    this.rafTimer = window.setTimeout(tick, 16);
+    this.frameTimer = window.setTimeout(tick, 16);
 
     this.timer = setInterval(() => {
       if (!isWindowVisible(this)) return;
@@ -133,9 +140,9 @@ class SysmonRoot extends ClientRoot {
       clearInterval(this.timer);
       this.timer = null;
     }
-    if (this.rafTimer !== null) {
-      clearTimeout(this.rafTimer);
-      this.rafTimer = null;
+    if (this.frameTimer !== null) {
+      clearTimeout(this.frameTimer);
+      this.frameTimer = null;
     }
     super.destroy();
   }
