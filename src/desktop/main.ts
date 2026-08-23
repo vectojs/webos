@@ -4,7 +4,7 @@
 
 import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
-import { buildConfig, persistTheme, svgDataUrl } from '../config';
+import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
 import { setAppTheme } from '../model/app-theme';
 import { findPreset } from '../model/themes';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
@@ -26,6 +26,9 @@ let shell: DesktopShell;
 
 function applyTheme(presetId: string): void {
   const target = findPreset(presetId) ?? findPreset('aero')!;
+  // Track the RESOLVED preset so the Settings indicator never shows a stale
+  // id when a caller passed an unknown one (fallback applies 'aero').
+  setActiveThemeId(target.id);
   setAppTheme(target);
   shell.setTheme(
     {
