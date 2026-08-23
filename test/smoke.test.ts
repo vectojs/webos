@@ -12,6 +12,7 @@ import type { DesktopShell } from '@vectojs/desktop';
 import { DEFAULT_PRESET } from '../src/config';
 import { appTheme } from '../src/model/app-theme';
 import { findPreset } from '../src/model/themes';
+import { ConfirmDialog } from '../src/app/confirm-dialog';
 
 interface WebosApi {
   scene: Scene;
@@ -110,6 +111,17 @@ describe('boot smoke', () => {
       const overflow = (await api().audit()).filter((finding) => finding.kind !== 'overlap');
       expect(overflow, `${appId} overflowed at ${width}x${height}`).toEqual([]);
     }
+  });
+
+  it('opens Notes with no confirm dialog mounted at rest', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    shell.open('notes');
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+    const notes = shell.windowManager.list().find((win) => win.appId === 'notes');
+    if (!notes) throw new Error('Missing notes window');
+    // WEB-0021 guard is demand-mounted only; boot and idle stay dialog-free.
+    expect(descendants(notes).some((entity) => entity instanceof ConfirmDialog)).toBe(false);
   });
 
   it('projects disabled browser history controls and focused window state', async () => {
