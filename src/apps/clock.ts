@@ -36,7 +36,9 @@ class ClockRoot extends Entity {
   public override render(r: IRenderer): void {
     const cx = this.width / 2;
     const cy = this.height / 2;
-    const radius = Math.min(cx, cy) - 16;
+    // Reserve 24px under the dial for the digital readout so it never
+    // crosses the bottom edge at the declared minimum window size.
+    const radius = Math.min(cx, cy - 24) - 16;
 
     // Face
     r.beginPath();
