@@ -36,6 +36,10 @@ class CalculatorRoot extends Entity {
     this.displayLabel.font = '700 24px "Segoe UI", system-ui, sans-serif';
     this.displayLabel.height = DISPLAY_H;
     this.displayLabel.interactive = false;
+    // Right-align within the padded client width; maxWidth tracks window
+    // resizes in render(), alignment engages once it is set.
+    this.displayLabel.setTextAlign('right');
+    this.displayLabel.y = PAD;
     this.add(this.displayLabel);
 
     const grid = [
@@ -65,9 +69,7 @@ class CalculatorRoot extends Entity {
 
   public override render(_r: IRenderer): void {
     const w = Math.max(0, this.width - PAD * 2);
-    // Right-aligned display (ui Text has no align option).
-    this.displayLabel.x = PAD + Math.max(0, w - this.displayLabel.width);
-    this.displayLabel.y = PAD;
+    if (this.displayLabel.maxWidth !== w) this.displayLabel.setMaxWidth(w);
     const btnW = Math.max(40, (w - 3 * GAP) / 4);
     let y = PAD + DISPLAY_H + 8;
     for (const row of this.rows) {
