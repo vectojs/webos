@@ -77,7 +77,7 @@ describe('boot smoke', () => {
       ['calculator', 240, 280],
       ['sysmon', 340, 300],
       ['settings', 420, 340],
-      ['clock', 260, 220],
+      ['clock', 240, 220],
       ['about', 400, 300],
     ] as const;
 
