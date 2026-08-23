@@ -168,6 +168,10 @@ export const browserApp: AppDefinition = {
             error?: string;
             truncated?: boolean;
           };
+          // Stale-response guard: Back/re-navigation while this fetch was in
+          // flight must not let the old page overwrite the newer one's
+          // title/body/status (the address bar would disagree with the page).
+          if (history[historyIndex] !== url) return;
           if (resp.ok && data.text) {
             pageTitle.setText(data.title || url);
             setBody(data.text);
@@ -179,6 +183,7 @@ export const browserApp: AppDefinition = {
             status.setText('Fetch failed');
           }
         } catch {
+          if (history[historyIndex] !== url) return;
           pageTitle.setText(`Error: ${url}`);
           setBody('Network error — is the proxy reachable?');
           status.setText('Fetch failed');
