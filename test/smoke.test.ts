@@ -5,18 +5,38 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Entity } from '@vectojs/core';
+import type { VectoJSEvent } from '@vectojs/core';
 import { Button } from '@vectojs/ui';
 import type { Scene } from '@vectojs/core';
 import type { DesktopShell } from '@vectojs/desktop';
+import { DEFAULT_PRESET } from '../src/config';
+import { appTheme } from '../src/model/app-theme';
+import { findPreset } from '../src/model/themes';
 
 interface WebosApi {
   scene: Scene;
   shell: DesktopShell;
   audit: () => Promise<{ kind: string; message: string }[]>;
+  applyTheme: (presetId: string) => void;
 }
 
 function api(): WebosApi {
   return (window as unknown as { __app: WebosApi }).__app;
+}
+
+/** The full scripting API lives on `window.webos`; `__app` is the devtools subset. */
+function webos(): { applyTheme: (presetId: string) => void } {
+  return (window as unknown as { webos: { applyTheme: (presetId: string) => void } }).webos;
+}
+
+function descendants(root: Entity): Entity[] {
+  const result: Entity[] = [];
+  const visit = (entity: Entity): void => {
+    result.push(entity);
+    for (const child of entity.children) visit(child);
+  };
+  visit(root);
+  return result;
 }
 
 beforeAll(async () => {
@@ -97,15 +117,6 @@ describe('boot smoke', () => {
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
     shell.open('browser');
     for (let i = 0; i < 4; i++) scene.step(16.67);
-    const descendants = (root: Entity): Entity[] => {
-      const result: Entity[] = [];
-      const visit = (entity: Entity): void => {
-        result.push(entity);
-        for (const child of entity.children) visit(child);
-      };
-      visit(root);
-      return result;
-    };
 
     const browser = shell.windowManager.list().find((win) => win.appId === 'browser');
     if (!browser) throw new Error('Missing browser window');
@@ -124,5 +135,85 @@ describe('boot smoke', () => {
         (entity) => entity instanceof Button && entity.label.includes('(browser, focused)'),
       ),
     ).toBe(true);
+  });
+
+  it('projects the theme catalog as a radiogroup with one checked preset', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    shell.open('settings');
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+    const settings = shell.windowManager.list().find((win) => win.appId === 'settings');
+    if (!settings) throw new Error('Missing settings window');
+    const tree = descendants(settings).map((entity) => entity.getA11yAttributes());
+
+    const groups = tree.filter((attrs) => attrs.role === 'radiogroup');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.label).toBe('Theme presets');
+
+    const rows = tree.filter((attrs) => attrs.role === 'radio');
+    expect(rows).toHaveLength(7);
+    expect(
+      rows.every((attrs) => typeof attrs.label === 'string' && attrs.label.startsWith('Theme: ')),
+    ).toBe(true);
+
+    const checked = rows.filter((attrs) => attrs.checked === true);
+    expect(checked).toHaveLength(1);
+    expect(checked[0]?.label).toBe(`Theme: ${DEFAULT_PRESET.id}`);
+    // Roving tabindex: exactly the checked row is the group's tab stop.
+    expect(rows.every((attrs) => (attrs.tabIndex ?? -1) === (attrs.checked ? 0 : -1))).toBe(true);
+  });
+
+  it('moves checked state and live-applies via arrow keys and the shell apply path', async () => {
+    const { scene, shell } = api();
+    const win =
+      shell.open('settings') ?? shell.windowManager.list().find((w) => w.appId === 'settings');
+    if (!win || win.appId !== 'settings') throw new Error('Missing settings window');
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+    const rowOf = (id: string): Entity | undefined =>
+      descendants(win).find(
+        (entity) =>
+          entity.getA11yAttributes().role === 'radio' &&
+          entity.getA11yAttributes().label === `Theme: ${id}`,
+      );
+    const activeRow = (): string | undefined =>
+      descendants(win)
+        .map((entity) => entity.getA11yAttributes())
+        .find((attrs) => attrs.role === 'radio' && attrs.checked)?.label;
+
+    // Arrow navigation applies immediately through the shared apply path.
+    const aero = rowOf('aero');
+    if (!aero) throw new Error('Missing aero row');
+    aero.emit('keydown', {
+      key: 'ArrowDown',
+      preventDefault: () => {},
+    } as unknown as VectoJSEvent<KeyboardEvent>);
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(activeRow()).toBe('Theme: breeze');
+    // Live preview reached the app theme singleton through setAppTheme.
+    expect(appTheme().accent).toBe(findPreset('breeze')!.tokens['desktop-focus-ring']);
+
+    // The shell-level apply path (terminal `theme`, API) updates the indicator too.
+    webos().applyTheme('dreamcore');
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(activeRow()).toBe('Theme: dreamcore');
+    const dream = rowOf('dreamcore');
+    if (!dream) throw new Error('Missing dreamcore row');
+    expect(dream.getA11yAttributes().tabIndex).toBe(0);
+
+    // Wrap-around: ArrowUp from the first preset selects the last.
+    webos().applyTheme('aero');
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    const aeroAgain = rowOf('aero');
+    if (!aeroAgain) throw new Error('Missing aero row');
+    aeroAgain.emit('keydown', {
+      key: 'ArrowUp',
+      preventDefault: () => {},
+    } as unknown as VectoJSEvent<KeyboardEvent>);
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(activeRow()).toBe('Theme: dreamcore');
+
+    // Restore so later suites boot-state assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    for (const other of [...shell.windowManager.list()]) shell.windowManager.close(other);
   });
 });

@@ -37,6 +37,23 @@ export interface BootConfig {
 export const DEFAULT_PRESET = aeroPreset;
 
 /**
+ * The preset id the shell currently applies. Written by the boot assembly and
+ * by the shell's single `applyTheme` path; read by the Settings indicator so
+ * the active row stays truthful no matter which surface applied the theme.
+ */
+let activeThemeId = DEFAULT_PRESET.id;
+
+/** Record the preset the shell actually applied (post-fallback resolution). */
+export function setActiveThemeId(presetId: string): void {
+  activeThemeId = presetId;
+}
+
+/** Live accessor for the currently applied preset id. */
+export function getActiveThemeId(): string {
+  return activeThemeId;
+}
+
+/**
  * The user's last-selected theme, if it is still a known preset id. Guarded
  * for environments without localStorage (SSR, privacy mode). Falls back to
  * the scaffold default.
@@ -67,6 +84,7 @@ export function persistTheme(presetId: string): void {
 export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
   const preset = findPreset(loadPersistedTheme()) ?? DEFAULT_PRESET;
   setAppTheme(preset);
+  setActiveThemeId(preset.id);
   const apps = [
     createTerminalApp({
       onTheme,
@@ -78,7 +96,7 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
     browserApp,
     calculatorApp,
     sysmonApp,
-    createSettingsApp({ applyTheme: onTheme }),
+    createSettingsApp({ applyTheme: onTheme, getActiveThemeId }),
     clockApp,
     aboutApp,
   ];
