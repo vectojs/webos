@@ -28,12 +28,19 @@
   ordinal, so identical taskbar entries ("Terminal" twice) are gone.
 - Narrow viewports: window positions clamp into the work area on aspect-
   changing resizes without re-centering; boot windows shrink to fit viewports
-  narrower than their preferred width; taskbar entries can no longer spill
-  into the clock.
+  narrower than their preferred width.
 
 ### Removed
 
 - Ctrl+P shortcut that launched Paint on the print reflex.
+
+### Fixed
+
+- Taskbar clock no longer overlaps entry buttons at narrow viewports
+  (#27): the clock is re-pinned to the right edge on every resize, theme
+  switch, and window open/close/retitle instead of only when the formatted
+  minute string changes, and taskbar entries truncate at the entries-host
+  edge instead of spilling toward the clock.
 
 ## 0.1.0 — 2026-08-15
 
