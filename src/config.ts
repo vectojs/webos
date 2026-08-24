@@ -127,7 +127,9 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
       theme: { ...preset.tokens },
       shortcuts: {
         'Control+n': { type: 'open-app', appId: 'notes' },
-        'Control+p': { type: 'open-app', appId: 'paint' },
+        // Ctrl+P deliberately unbound (audit #25 P2-D): print reflex kept
+        // launching Paint. Paint stays reachable via icon/menu; the shell's
+        // document-level guard already preventDefaults browser Print.
         'Control+e': { type: 'open-app', appId: 'files' },
         'Control+b': { type: 'open-app', appId: 'browser' },
         'Control+Alt+t': { type: 'open-app', appId: 'terminal' },

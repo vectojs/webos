@@ -124,6 +124,22 @@ describe('boot smoke', () => {
     expect(shell.windowManager.list().some((win) => win.isDialog)).toBe(false);
   });
 
+  it('titles multiple Notes instances by document, not "Untitled"', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const first = shell.open('notes');
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    const second = shell.open('notes');
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    // Audit #25 P2-D: window/taskbar/AT names carry the doc name and are
+    // unique per instance.
+    expect(first.title).toMatch(/^note-\d+\.txt - Notepad$/);
+    expect(second.title).toMatch(/^note-\d+\.txt - Notepad$/);
+    expect(second.title).not.toBe(first.title);
+    shell.windowManager.close(first);
+    shell.windowManager.close(second);
+  });
+
   it('opens a shell-modal confirm dialog focused and dismisses on Escape', async () => {
     const { scene, shell } = api();
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);

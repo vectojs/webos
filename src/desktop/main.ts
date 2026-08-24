@@ -6,9 +6,11 @@ import { Scene, SVGEntity } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
 import { Button, Text } from '@vectojs/ui';
 import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
+import { peekNextNoteWindowTitle } from '../apps/notes';
 import { setAppTheme } from '../model/app-theme';
 import { findPreset } from '../model/themes';
 import { StorageVfs } from '../model/storage-vfs';
+import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
 import { clampPosition, fitGeometry } from '../model/window-geometry';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 import { installStartMenuKeyboard } from './start-menu-keys';
@@ -47,6 +49,29 @@ function applyTheme(presetId: string): void {
 
 const boot = buildConfig((id) => applyTheme(id));
 shell = new DesktopShell({ scene, config: boot.config });
+
+/**
+ * Per-instance window titles (audit #25 P2-D). The engine titles every
+ * instance with the app's static label, so two terminals or two notes
+ * windows were indistinguishable in the taskbar and for AT. Notes windows
+ * carry their deterministic document name; other multi-instance apps get an
+ * ordinal from the second instance on. The engine has no live-retitle API,
+ * so a save renaming an open window stays out of scope (recorded deferred).
+ */
+const baseOpen = shell.open.bind(shell);
+shell.open = (appId, opts) => {
+  if (!opts?.title) {
+    if (appId === 'notes') {
+      return baseOpen(appId, { ...opts, title: peekNextNoteWindowTitle() });
+    }
+    const app = boot.config.apps?.find((a) => a.id === appId);
+    const openCount = shell.windowManager.listByApp(appId).length + 1;
+    if (app?.instances === 'multiple' && openCount > 1) {
+      return baseOpen(appId, { ...opts, title: `${app.title} ${openCount}` });
+    }
+  }
+  return baseOpen(appId, opts);
+};
 
 // ---------------------------------------------------------------- viewport
 
@@ -360,18 +385,9 @@ void (async () => {
     // them, so seeds apply to first boot only. Dirs stay unconditional.
     let restoredAny = false;
     if (vfs instanceof StorageVfs) restoredAny = await vfs.restored;
-    await vfs.mkdir('/docs');
-    await vfs.mkdir('/notes');
-    await vfs.mkdir('/system');
+    for (const dir of SEED_DIRS) await vfs.mkdir(dir);
     if (!restoredAny) {
-      await vfs.write(
-        '/docs/readme.txt',
-        'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Ctrl+Alt+T:    New Terminal\n  • Ctrl+N:        New Notepad\n  • Ctrl+W:        Close Focused Window\n  • Ctrl+Space:    Toggle Start Menu\n',
-      );
-      await vfs.write(
-        '/docs/shortcuts.txt',
-        'Keybindings:\n  • Ctrl+Space  - Start Menu\n  • Ctrl+N      - Notes\n  • Ctrl+Alt+T  - Terminal\n  • Ctrl+W      - Close Window\n',
-      );
+      for (const [path, content] of Object.entries(SEED_DOCS)) await vfs.write(path, content);
     }
   }
 
