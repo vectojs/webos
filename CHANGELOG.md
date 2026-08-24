@@ -19,11 +19,10 @@
 
 - aero is now the Modern Fluent default and aqua the Classic Aqua era
   (category labels fixed)
-- 11 spec-proposed token values adjusted to keep the WEB-0023 contrast
-  contract green; deviations recorded in the preset files
-
-
-## Unreleased
+- Spec-proposed token values adjusted where needed to keep the WEB-0023
+  contrast contract green (16 values across all 7 presets); each deviation
+  from spec §3.2 fails its floor at the proposed value — see the preset
+  files and carryctx DEC-0017/0018.
 
 ### Added
 
@@ -56,6 +55,11 @@
 ### Removed
 
 - Ctrl+P shortcut that launched Paint on the print reflex.
+- Engine-taskbar guard from #27/#29 (`taskbar-guard.ts`): superseded by the
+  WebOS-owned taskbar (WEB-0034), which owns clock placement and entry
+  clipping structurally instead of pinning engine internals (DEC-0019); its
+  dist contract lives on as `webos-taskbar.dist.test.ts` against the new
+  seam.
 
 ### Fixed
 
@@ -63,7 +67,8 @@
   (#27): the clock is re-pinned to the right edge on every resize, theme
   switch, and window open/close/retitle instead of only when the formatted
   minute string changes, and taskbar entries truncate at the entries-host
-  edge instead of spilling toward the clock.
+  edge instead of spilling toward the clock. (The WebOS-owned taskbar from
+  WEB-0034 now provides these guarantees directly.)
 
 ## 0.1.0 — 2026-08-15
 
