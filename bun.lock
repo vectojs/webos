@@ -9,7 +9,7 @@
         "@vectojs/desktop": "0.6.0",
         "@vectojs/devtools": "0.11.1",
         "@vectojs/styles": "0.3.2",
-        "@vectojs/ui": "2.19.2",
+        "@vectojs/ui": "2.20.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.5.10",
@@ -280,7 +280,7 @@
 
     "@vectojs/text": ["@vectojs/text@0.4.1", "", { "dependencies": { "bidi-js": "^1.0.3" } }, "sha512-255W/3PPylIAeiSQkiDMr9kNEyyjBl4zYa7OA6CwZGErWVgThzzWm6o9N/rWQ22zOHB4jtdfqqjJ5mQ79HSZdQ=="],
 
-    "@vectojs/ui": ["@vectojs/ui@2.19.2", "", { "peerDependencies": { "@vectojs/core": ">=1.25.0 <2.0.0" } }, "sha512-pgScR1frro5N3QVQ4dBRig+AxgQMnbR5k/VnjaQ4QRXkmyvD32Dd0SvI9HI7TkwPwJLKQKNJm+YDmR75R//zxg=="],
+    "@vectojs/ui": ["@vectojs/ui@2.20.0", "", { "peerDependencies": { "@vectojs/core": ">=1.25.0 <2.0.0" } }, "sha512-mz1qqajaPkvg4voEFz+w9FiHMqE2WjVXWJD41Mpu/djewSrRHPb4YbYIZApy9F9uoSahXvmpC1e342IB4hRCwg=="],
 
     "ajv": ["ajv@8.20.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
