@@ -2,12 +2,14 @@
  * Boot — Scene(onDemand) → DesktopShell → icon grid → seed VFS → devtools hook.
  */
 
-import { Scene } from '@vectojs/core';
+import { Scene, SVGEntity } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
+import { Button, Text } from '@vectojs/ui';
 import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
 import { setAppTheme } from '../model/app-theme';
 import { findPreset } from '../model/themes';
 import { StorageVfs } from '../model/storage-vfs';
+import { clampPosition, fitGeometry } from '../model/window-geometry';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 
 const root = document.getElementById('root');
@@ -112,6 +114,7 @@ function fit(): void {
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
   recenterWindowsPreservingOffset(vp.w, vp.h);
+  clampWindowsToWorkArea();
   // fit() runs before the icon grid exists at boot (TDZ guard).
   if (iconsReady) layoutIcons();
 }
@@ -143,6 +146,24 @@ function focusedWindow(): DesktopWindow | null {
 
 function workArea(): { x: number; y: number; width: number; height: number } {
   return shell.layout.workArea(shell.layout.primary().id);
+}
+
+/**
+ * Pull any window whose box escapes the work area back inside — without
+ * re-positioning windows that are already inside (audit #25 P2-B). Runs on
+ * every viewport resize: the aspect-changing path skips re-centering by
+ * design (measured +349,+129 shift), so clamping is the only correction a
+ * narrow viewport gets.
+ */
+function clampWindowsToWorkArea(): void {
+  const area = workArea();
+  for (const win of shell.windowManager.list()) {
+    if (win.maximized || win.minimized) continue;
+    const pos = clampPosition(win.x, win.y, win.width, win.height, area);
+    if (pos.x !== win.x || pos.y !== win.y) {
+      win.setGeometry(pos.x, pos.y, win.width, win.height);
+    }
+  }
 }
 
 function snapFocused(dir: 'left' | 'right' | 'top' | 'bottom'): void {
@@ -251,6 +272,32 @@ scene.add(catcher);
 
 // Order: catcher → shell → size → rAF → icons → marquee → initial windows
 shell.start();
+
+/**
+ * Taskbar overflow guard (audit #25 P2-B): the engine's rebuild() places each
+ * entry BEFORE checking the remaining host width, so the last button can
+ * spill past the entries host toward the clock on narrow viewports. Clipping
+ * that host truncates the spill at the boundary; Start and the clock stay
+ * pinned and clear. The entries host is engine-private, so it is identified
+ * structurally (the bar's non-control child) and the fix fails safe to a
+ * no-op if a future desktop package reshapes the subtree.
+ */
+function clipTaskbarEntries(): void {
+  const tb = shell.taskbar;
+  if (!tb) return;
+  for (const bar of tb.children) {
+    for (const child of bar.children) {
+      const isControl =
+        child instanceof Button || child instanceof Text || child instanceof SVGEntity;
+      if (!isControl && child.width > 0) {
+        child.clipChildren = true;
+        return;
+      }
+    }
+  }
+}
+clipTaskbarEntries();
+
 fit();
 scene.start();
 
@@ -305,15 +352,15 @@ scene.add(marquee);
 void (async () => {
   const vfs = boot.config.vfs;
   if (vfs) {
+    // Durable VFS (audit #25 P1-B): when a snapshot restored, it already
+    // holds the user's copies of the seed documents — reseeding would clobber
+    // them, so seeds apply to first boot only. Dirs stay unconditional.
+    let restoredAny = false;
+    if (vfs instanceof StorageVfs) restoredAny = await vfs.restored;
     await vfs.mkdir('/docs');
     await vfs.mkdir('/notes');
     await vfs.mkdir('/system');
-    let restoredAny = false;
-    if (vfs instanceof StorageVfs) restoredAny = await vfs.restored;
     if (!restoredAny) {
-      // Durable VFS (audit #25 P1-B): a restored snapshot already holds the
-      // user's copies of the seed documents — reseeding would clobber them,
-      // so seeds apply to first boot only.
       await vfs.write(
         '/docs/readme.txt',
         'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Ctrl+Alt+T:    New Terminal\n  • Ctrl+N:        New Notepad\n  • Ctrl+W:        Close Focused Window\n  • Ctrl+Space:    Toggle Start Menu\n',
@@ -325,10 +372,29 @@ void (async () => {
     }
   }
 
+  // Boot spawns shrink to fit narrow viewports instead of overflowing them
+  // (audit #25 P2-B): preferred geometry first, fitted to the live scene.
+  const tbH = shell.taskbar ? shell.taskbar.height : 40;
   const termWin: DesktopWindow | null = shell.open('terminal');
-  if (termWin) termWin.setGeometry(200, 36, 540, 380);
+  if (termWin) {
+    const g = fitGeometry(
+      { x: 200, y: 36, width: 540, height: 380 },
+      scene.width,
+      scene.height,
+      tbH,
+    );
+    termWin.setGeometry(g.x, g.y, g.width, g.height);
+  }
   const filesWin: DesktopWindow | null = shell.open('files');
-  if (filesWin) filesWin.setGeometry(560, 80, 520, 470);
+  if (filesWin) {
+    const g = fitGeometry(
+      { x: 560, y: 80, width: 520, height: 470 },
+      scene.width,
+      scene.height,
+      tbH,
+    );
+    filesWin.setGeometry(g.x, g.y, g.width, g.height);
+  }
   scene.markDirty();
 })();
 
