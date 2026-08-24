@@ -10,7 +10,7 @@ import { Entity, type IRenderer } from '@vectojs/core';
 import { baseName, type AppContext, type AppDefinition } from '@vectojs/desktop';
 import { Stack, Text, TextArea } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, ThemedTextArea } from '../app/ui-helpers';
-import { ConfirmDialog } from '../app/confirm-dialog';
+import { openConfirmDialog } from '../app/confirm-dialog';
 import { appIconSvg } from '../desktop/icons';
 import { UnsavedGuard } from '../model/unsaved-guard';
 
@@ -122,7 +122,7 @@ export const notesApp: AppDefinition = {
         return;
       }
       if (guard.isDirty(area.value) && rootHolder.root) {
-        const choice = await ConfirmDialog.open(rootHolder.root, {
+        const choice = await openConfirmDialog(ctx.windowManager, {
           title: 'Unsaved changes',
           message: `Save changes to ${docName} before reloading?`,
         });
