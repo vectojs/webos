@@ -183,6 +183,9 @@ export const browserApp: AppDefinition = {
             timedOut,
           ]);
           if (winner === null) {
+            // Timed out: abort the losing fetch so its socket/proxy work
+            // stops instead of running to completion unheard.
+            controller.abort();
             if (history[historyIndex] !== url) return;
             pageTitle.setText(`Timed out: ${url}`);
             setBody(

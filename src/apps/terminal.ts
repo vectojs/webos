@@ -15,6 +15,16 @@ const PROMPT = 'user@vectojs:~$ ';
 const FONT = '12px "Consolas", "Fira Code", monospace';
 /** Caret top offset from the text baseline for a 12px monospace line (~ascent). */
 const CARET_ASCENT = 11;
+/** Baseline stride between output rows. */
+const LINE_HEIGHT = 16;
+/** Vertical chrome around the rows: top padding + bottom margin of the window. */
+const ROW_CHROME = 30;
+
+/** How many output rows fit a window of the given height (single source for
+ * render() and the wheel scrollback clamp). */
+function visibleLineBudget(height: number): number {
+  return Math.max(1, Math.floor((height - ROW_CHROME) / LINE_HEIGHT));
+}
 
 /** Sample whose per-glyph advance defines the caret step; monospace, so uniform. */
 const CHAR_SAMPLE = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -57,16 +67,11 @@ class TerminalRoot extends Entity {
       const native = e.nativeEvent as WheelEvent | undefined;
       if (!native || native.deltaY === 0) return;
       const step = native.deltaY > 0 ? 3 : -3;
-      const max = Math.max(0, this.history.length - this.visibleLineBudget() + 1);
+      const max = Math.max(0, this.history.length - visibleLineBudget(this.height) + 1);
       this.scrollOffset = Math.min(max, Math.max(0, this.scrollOffset + step));
       native.preventDefault?.();
       this.scene?.markDirty();
     });
-  }
-
-  /** How many output rows fit the current window height (matches render()). */
-  private visibleLineBudget(): number {
-    return Math.max(1, Math.floor((this.height - 30) / 16));
   }
 
   protected override onMounted(): void {
@@ -174,11 +179,10 @@ class TerminalRoot extends Entity {
     r.fill('#0c1017');
 
     const font = FONT;
-    const lineHeight = 16;
     // fillText's y is the BASELINE (the renderer never sets textBaseline):
     // start the first baseline below the top so glyphs are not clipped.
     let y = 10 + CARET_ASCENT;
-    const maxVisibleLines = Math.floor((this.height - 30) / lineHeight);
+    const maxVisibleLines = visibleLineBudget(this.height);
     // Scrollback window (audit #25 P2-D): scrollOffset lines ride above the
     // viewport, clamped here so a shrink can never overshoot the buffer.
     const maxOffset = Math.max(0, this.history.length - maxVisibleLines + 1);
@@ -188,7 +192,7 @@ class TerminalRoot extends Entity {
 
     for (const line of visible) {
       r.fillText(line, 12, y, font, lineColor(line));
-      y += lineHeight;
+      y += LINE_HEIGHT;
     }
 
     // Active input line
