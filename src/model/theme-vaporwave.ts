@@ -57,7 +57,7 @@ export const vaporwavePreset: ThemePreset = {
     'desktop-start-bg': '#120524',
     'desktop-start-border': '#ff71ce',
     'desktop-start-fg': '#05ffa1',
-    'desktop-start-hover': '#ff71ce',
+    'desktop-start-hover': '#3d1a5b',
     'desktop-resize-handle': 6,
     'desktop-min-width': 240,
     'desktop-min-height': 160,

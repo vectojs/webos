@@ -10,17 +10,17 @@ describe('app theme', () => {
 
     expect(appTheme()).toEqual({
       surface: '#120524',
-      surfaceRaised: '#ff71ce',
+      surfaceRaised: '#3d1a5b',
       surfaceSunken: '#120524',
       text: '#05ffa1',
-      textMuted: '#0c755c',
+      textMuted: '#0b8c68',
       border: '#ff71ce',
       accent: '#05ffa1',
       accentText: '#000000',
       accentHover: '#01cdfe',
       focus: '#05ffa1',
       danger: '#01cdfe',
-      dangerSurface: '#0f2547',
+      dangerSurface: '#00252e',
       inputSurface: '#120524',
     });
   });
