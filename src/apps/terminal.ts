@@ -6,34 +6,20 @@
 import type { IRenderer } from '@vectojs/core';
 import { Entity } from '@vectojs/core';
 import type { AppDefinition, Vfs } from '@vectojs/desktop';
+import { measureText } from '@vectojs/ui';
 import { isWindowFocused, isWindowVisible } from '../app/window-utils';
 import { executeCommand, trimHistory } from '../model/terminal';
 import { appIconSvg } from '../desktop/icons';
 
 const PROMPT = 'user@vectojs:~$ ';
 const FONT = '12px "Consolas", "Fira Code", monospace';
-/** Fallback monospace advance when no measuring context exists (0.6em at 12px). */
-const FALLBACK_CHAR_WIDTH = 7.2;
 /** Caret top offset from the text baseline for a 12px monospace line (~ascent). */
 const CARET_ASCENT = 11;
 
-/** Measure one monospace advance from a throwaway canvas; null when unavailable. */
-function measureAdvance(sample: string): number | null {
-  try {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d');
-    if (!ctx) return null;
-    ctx.font = FONT;
-    return ctx.measureText(sample).width / sample.length;
-  } catch {
-    return null;
-  }
-}
-
-const CHAR_WIDTH = measureAdvance('0123456789abcdefghijklmnopqrstuvwxyz') ?? FALLBACK_CHAR_WIDTH;
-const promptMeasured = measureAdvance(PROMPT);
-const PROMPT_WIDTH =
-  promptMeasured !== null ? promptMeasured * PROMPT.length : PROMPT.length * CHAR_WIDTH;
+/** Sample whose per-glyph advance defines the caret step; monospace, so uniform. */
+const CHAR_SAMPLE = '0123456789abcdefghijklmnopqrstuvwxyz';
+const CHAR_WIDTH = measureText(CHAR_SAMPLE, FONT) / CHAR_SAMPLE.length;
+const PROMPT_WIDTH = measureText(PROMPT, FONT);
 
 export interface TerminalAppOptions {
   onTheme: (id: string) => void;
