@@ -62,6 +62,34 @@ describe('storage vfs', () => {
     expect(await revived.read('/notes/kept.txt')).toBe('stay');
   });
 
+  it('cascades a directory delete out of later snapshots', async () => {
+    // Review PX-0078: remove() only dropped the exact dir entry, so nested
+    // contents survived in the snapshot and resurrected on reload.
+    const storage = fakeStorage();
+    const vfs = new StorageVfs(storage);
+    await vfs.mkdir('/docs');
+    await vfs.write('/docs/readme.txt', 'A');
+    await vfs.write('/docs/sub/deep.txt', 'B');
+    await vfs.remove('/docs');
+    vfs.flush();
+
+    const snap = JSON.parse(storage.dump()['webos:vfs'] as string) as {
+      files: Record<string, string>;
+      dirs: string[];
+    };
+    expect(Object.keys(snap.files).filter((p) => p === '/docs' || p.startsWith('/docs/'))).toEqual(
+      [],
+    );
+    expect(snap.dirs.filter((d) => d === '/docs' || d.startsWith('/docs/'))).toEqual([]);
+
+    // The resurrection path itself: fresh instance replays the snapshot.
+    const revived = new StorageVfs(storage);
+    await revived.restored;
+    expect(await revived.stat('/docs')).toBeNull();
+    expect(await revived.stat('/docs/readme.txt')).toBeNull();
+    expect(await revived.stat('/docs/sub/deep.txt')).toBeNull();
+  });
+
   it('tolerates corrupt snapshots and missing storage', async () => {
     const storage = fakeStorage();
     storage.setItem('webos:vfs', '{not json');

@@ -16,7 +16,7 @@
  * `setItem` avoids partial-write states entirely.
  */
 
-import { MemoryVfs, type Vfs, type VfsEntry, type VfsStat } from '@vectojs/desktop';
+import { MemoryVfs, normalizePath, type Vfs, type VfsEntry, type VfsStat } from '@vectojs/desktop';
 
 const FLUSH_DELAY_MS = 250;
 
@@ -94,8 +94,17 @@ export class StorageVfs implements Vfs {
 
   async remove(path: string): Promise<void> {
     await this.inner.remove(path);
-    this.dirs.delete(path);
-    this.contents.delete(path);
+    // Cascade like MemoryVfs.remove (review PX-0078): a directory delete must
+    // also drop every mirrored entry beneath it, or the next flush
+    // re-serializes them and a reload resurrects the children.
+    const dir = normalizePath(path);
+    const prefix = dir + '/';
+    for (const key of [...this.contents.keys()]) {
+      if (key === dir || key.startsWith(prefix)) this.contents.delete(key);
+    }
+    for (const d of [...this.dirs]) {
+      if (d === dir || d.startsWith(prefix)) this.dirs.delete(d);
+    }
     this.scheduleFlush();
   }
 
