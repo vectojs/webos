@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added (WEB-0034, webos#28 — theme identity & desktop-OS feel)
+
+- Era-faithful token matrices for all 7 presets (spec §3.2) plus app-side
+  era chrome tokens: menu set, tray well, caption shape, chrome font,
+  per-era taskbar height, window shadow/glow/pinstripe/bevel composites
+- WebOS-owned taskbar (Start tile, pinned launchers, running entries with
+  per-era indicator, tray cluster, two-line clock)
+- Searchable start menu (search field, 6-column pinned grid, recents,
+  footer); y2k era gets cascading program groups instead
+- Desktop right-click context menu; 900ms boot splash
+- Per-era icon treatments with live re-skin on theme switch
+- Refreshed wallpaper art for all 7 eras (inline SVG + CDN, byte-identical)
+
+### Changed
+
+- aero is now the Modern Fluent default and aqua the Classic Aqua era
+  (category labels fixed)
+- 11 spec-proposed token values adjusted to keep the WEB-0023 contrast
+  contract green; deviations recorded in the preset files
+
+
+## Unreleased
+
 ### Added
 
 - Desktop icons launch from the keyboard: Enter/Space activates the focused
