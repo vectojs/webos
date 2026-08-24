@@ -18,6 +18,17 @@ const WELCOME_TEXT = 'Welcome to VectoJS Notes!\nEdit your notes and save direct
 
 let noteCounter = 0;
 
+/**
+ * Window title of the note that will be created by the NEXT open (audit #25
+ * P2-D): the document name is deterministic (`note-<counter>.txt`), so the
+ * taskbar and AT can carry it from launch instead of an anonymous
+ * "Untitled". The engine has no live retitle API, so post-rename updates are
+ * out of scope here.
+ */
+export function peekNextNoteWindowTitle(): string {
+  return `note-${noteCounter + 1}.txt - Notepad`;
+}
+
 class NotesLayout extends Entity {
   constructor(
     private readonly status: Text,
@@ -52,7 +63,9 @@ class NotesLayout extends Entity {
 
 export const notesApp: AppDefinition = {
   id: 'notes',
-  title: 'Untitled - Notepad',
+  // Fallback chrome/launcher label only — real window titles carry the
+  // document name via peekNextNoteWindowTitle (see the main.ts open wrapper).
+  title: 'Notepad',
   iconSvg: appIconSvg('notes'),
   instances: 'multiple',
   defaultWidth: 540,

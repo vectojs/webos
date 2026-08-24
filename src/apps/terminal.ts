@@ -3,7 +3,7 @@
  * `r.*`-only text rendering (D2). Command semantics live in `model/terminal`.
  */
 
-import type { IRenderer } from '@vectojs/core';
+import type { ContentProjection, IRenderer } from '@vectojs/core';
 import { Entity } from '@vectojs/core';
 import type { AppDefinition, Vfs } from '@vectojs/desktop';
 import { measureText } from '@vectojs/ui';
@@ -15,6 +15,16 @@ const PROMPT = 'user@vectojs:~$ ';
 const FONT = '12px "Consolas", "Fira Code", monospace';
 /** Caret top offset from the text baseline for a 12px monospace line (~ascent). */
 const CARET_ASCENT = 11;
+/** Baseline stride between output rows. */
+const LINE_HEIGHT = 16;
+/** Vertical chrome around the rows: top padding + bottom margin of the window. */
+const ROW_CHROME = 30;
+
+/** How many output rows fit a window of the given height (single source for
+ * render() and the wheel scrollback clamp). */
+function visibleLineBudget(height: number): number {
+  return Math.max(1, Math.floor((height - ROW_CHROME) / LINE_HEIGHT));
+}
 
 /** Sample whose per-glyph advance defines the caret step; monospace, so uniform. */
 const CHAR_SAMPLE = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -40,6 +50,8 @@ class TerminalRoot extends Entity {
   ];
   private currentInput = '';
   private cursorPos = 0;
+  /** Lines of scrollback hidden above the viewport; 0 follows the tail. */
+  private scrollOffset = 0;
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private caretTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -49,6 +61,17 @@ class TerminalRoot extends Entity {
   ) {
     super();
     this.interactive = true;
+    // Scrollback (audit #25 P2-D): wheeling scrolls the retained history
+    // buffer instead of silently clipping to the last screenful.
+    this.on('wheel', (e) => {
+      const native = e.nativeEvent as WheelEvent | undefined;
+      if (!native || native.deltaY === 0) return;
+      const step = native.deltaY > 0 ? 3 : -3;
+      const max = Math.max(0, this.history.length - visibleLineBudget(this.height) + 1);
+      this.scrollOffset = Math.min(max, Math.max(0, this.scrollOffset + step));
+      native.preventDefault?.();
+      this.scene?.markDirty();
+    });
   }
 
   protected override onMounted(): void {
@@ -62,6 +85,7 @@ class TerminalRoot extends Entity {
         const line = this.currentInput;
         this.currentInput = '';
         this.cursorPos = 0;
+        this.scrollOffset = 0;
         this.history.push(PROMPT + line);
         void this.run(line);
         this.scene?.markDirty();
@@ -117,12 +141,30 @@ class TerminalRoot extends Entity {
     });
     if (result.clear) {
       this.history = [];
+      this.scrollOffset = 0;
       this.scene?.markDirty();
       return;
     }
     if (result.themeId) this.opts.onTheme(result.themeId);
+    // Fresh output snaps the view back to the tail, like a real terminal.
     this.history = trimHistory([...this.history, ...result.lines]);
+    this.scrollOffset = 0;
     this.scene?.markDirty();
+  }
+
+  /**
+   * AT / find-in-page surface for the buffer (audit #25 P2-D): the canvas
+   * paints per-line fillText with no Text entities, so without a projection
+   * the terminal is invisible to screen readers and find. Read-only on
+   * purpose — `selectable: false` keeps mouse selection semantics unchanged.
+   */
+  public override getContentProjection(): ContentProjection {
+    return {
+      text: [...this.history, PROMPT + this.currentInput].join('\n'),
+      font: FONT,
+      selectable: false,
+      ligatures: 'none',
+    };
   }
 
   public override isPointInside(gx: number, gy: number): boolean {
@@ -137,16 +179,20 @@ class TerminalRoot extends Entity {
     r.fill('#0c1017');
 
     const font = FONT;
-    const lineHeight = 16;
     // fillText's y is the BASELINE (the renderer never sets textBaseline):
     // start the first baseline below the top so glyphs are not clipped.
     let y = 10 + CARET_ASCENT;
-    const maxVisibleLines = Math.floor((this.height - 30) / lineHeight);
-    const visible = this.history.slice(-maxVisibleLines);
+    const maxVisibleLines = visibleLineBudget(this.height);
+    // Scrollback window (audit #25 P2-D): scrollOffset lines ride above the
+    // viewport, clamped here so a shrink can never overshoot the buffer.
+    const maxOffset = Math.max(0, this.history.length - maxVisibleLines + 1);
+    this.scrollOffset = Math.min(this.scrollOffset, maxOffset);
+    const end = this.history.length - this.scrollOffset;
+    const visible = this.history.slice(Math.max(0, end - maxVisibleLines), end);
 
     for (const line of visible) {
       r.fillText(line, 12, y, font, lineColor(line));
-      y += lineHeight;
+      y += LINE_HEIGHT;
     }
 
     // Active input line

@@ -124,6 +124,22 @@ describe('boot smoke', () => {
     expect(shell.windowManager.list().some((win) => win.isDialog)).toBe(false);
   });
 
+  it('titles multiple Notes instances by document, not "Untitled"', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const first = shell.open('notes');
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    const second = shell.open('notes');
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    // Audit #25 P2-D: window/taskbar/AT names carry the doc name and are
+    // unique per instance.
+    expect(first.title).toMatch(/^note-\d+\.txt - Notepad$/);
+    expect(second.title).toMatch(/^note-\d+\.txt - Notepad$/);
+    expect(second.title).not.toBe(first.title);
+    shell.windowManager.close(first);
+    shell.windowManager.close(second);
+  });
+
   it('opens a shell-modal confirm dialog focused and dismisses on Escape', async () => {
     const { scene, shell } = api();
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
@@ -148,6 +164,67 @@ describe('boot smoke', () => {
     for (let i = 0; i < 2; i++) scene.step(16.67);
     expect(shell.windowManager.list().some((win) => win.isDialog)).toBe(false);
     await expect(answer).resolves.toBe('cancel');
+  });
+
+  /**
+   * Focus restoration (review PX-0077): the engine prunes the menu's mirrors
+   * on close without refocusing, so dismissal dropped DOM focus on body.
+   */
+  function ensureStartMenuClosed(scene: Scene): void {
+    // A prior test may have left the menu open — a bare toggle would close
+    // instead of open. Escape is inert when nothing is stacked.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+  }
+
+  function parkFocusOnTaskbarButton(scene: Scene, shell: DesktopShell): HTMLElement {
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    ensureStartMenuClosed(scene);
+    const startButton = descendants(shell.taskbar!).find(
+      (entity): entity is Button => entity instanceof Button,
+    );
+    if (!startButton) throw new Error('Missing taskbar button');
+    const mirror = document.getElementById(startButton.id);
+    if (!mirror) throw new Error('Missing taskbar button mirror');
+    mirror.focus();
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+    expect(document.activeElement).toBe(mirror);
+    return mirror;
+  }
+
+  /**
+   * Open the menu from the wrapper, then reproduce the post-prune focus
+   * state: in a live engine closing removes the focused mirror synchronously
+   * (hideOverlay → removeA11yRecursively) and focus falls to body. Overlay
+   * mirrors are not reliably projected under happy-dom, so the tests place
+   * focus there explicitly before driving each real close path.
+   */
+  function openMenuThenDropFocusToBody(scene: Scene, shell: DesktopShell): void {
+    shell.toggleStartMenu();
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+  }
+
+  it('restores opener focus when the start menu closes on Escape', async () => {
+    const { scene, shell } = api();
+    const opener = parkFocusOnTaskbarButton(scene, shell);
+    openMenuThenDropFocusToBody(scene, shell);
+
+    // Engine-owned dismissal: the shell listens on document capture.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('restores opener focus when the start toggle closes the menu', async () => {
+    const { scene, shell } = api();
+    const opener = parkFocusOnTaskbarButton(scene, shell);
+    openMenuThenDropFocusToBody(scene, shell);
+
+    shell.toggleStartMenu(); // wrapper close path
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(document.activeElement).toBe(opener);
   });
 
   it('projects disabled browser history controls and focused window state', async () => {

@@ -15,6 +15,7 @@ import type { AppDefinition } from '@vectojs/desktop';
 import { Entity, type IRenderer } from '@vectojs/core';
 import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, ClientRoot, p, t, ThemedInput, vstack } from '../app/ui-helpers';
+import { humanizeProxyError } from '../model/proxy-errors';
 import { appIconSvg } from '../desktop/icons';
 import { HRule } from './_hrule';
 
@@ -52,6 +53,8 @@ const PAGES: Record<string, Page> = {
 const HOME = 'vectojs://home';
 const PROXY_URL = 'https://proxy.vectojs.org/?url=';
 const BODY_WIDTH = 570;
+/** Hard ceiling for a proxy fetch — below it the page hangs on "Loading…" forever. */
+const FETCH_TIMEOUT_MS = 15_000;
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -142,6 +145,10 @@ export const browserApp: AppDefinition = {
 
     const history: string[] = [HOME];
     let historyIndex = 0;
+    // Audit #25 P2-D: the in-flight fetch, aborted on timeout or when a newer
+    // navigation supersedes it — previously a hanging proxy left "Loading…"
+    // on screen forever with no way out but another navigation.
+    let inFlight: AbortController | null = null;
 
     /** Show body text and refresh the scroll extent (content grows/shrinks). */
     const setBody = (text: string): void => {
@@ -160,8 +167,35 @@ export const browserApp: AppDefinition = {
         setBody('Loading…');
         status.setText(`Fetching ${url} via proxy…`);
         addressBar.scene?.markDirty();
+        inFlight?.abort();
+        const controller = new AbortController();
+        inFlight = controller;
+        const timedOut = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), FETCH_TIMEOUT_MS),
+        );
         try {
-          const resp = await fetch(PROXY_URL + encodeURIComponent(url));
+          // The race gives a deterministic timeout even where AbortSignal
+          // delivery is delayed; the abort still cancels the underlying IO.
+          const winner = await Promise.race([
+            fetch(PROXY_URL + encodeURIComponent(url), {
+              signal: controller.signal,
+            }),
+            timedOut,
+          ]);
+          if (winner === null) {
+            // Timed out: abort the losing fetch so its socket/proxy work
+            // stops instead of running to completion unheard.
+            controller.abort();
+            if (history[historyIndex] !== url) return;
+            pageTitle.setText(`Timed out: ${url}`);
+            setBody(
+              `The proxy did not respond within ${FETCH_TIMEOUT_MS / 1000} s. ` +
+                'The site may be down or too slow — try again or pick another page.',
+            );
+            status.setText('Timed out');
+            return;
+          }
+          const resp = winner;
           const data = (await resp.json()) as {
             title?: string;
             text?: string;
@@ -178,8 +212,11 @@ export const browserApp: AppDefinition = {
             const truncated = data.truncated ? ' · truncated' : '';
             status.setText(`${url}  ·  ${data.text.length} chars via proxy${truncated}`);
           } else {
+            // Failure branch: either a non-2xx or an empty body. Raw edge
+            // payloads ("error code: 1016") get mapped to human copy.
+            const raw = data.error ?? data.text ?? '';
             pageTitle.setText(`Error: ${url}`);
-            setBody(data.error || `HTTP ${resp.status}`);
+            setBody(humanizeProxyError(raw) || data.error || `HTTP ${resp.status}`);
             status.setText('Fetch failed');
           }
         } catch {
@@ -187,6 +224,8 @@ export const browserApp: AppDefinition = {
           pageTitle.setText(`Error: ${url}`);
           setBody('Network error — is the proxy reachable?');
           status.setText('Fetch failed');
+        } finally {
+          if (inFlight === controller) inFlight = null;
         }
       } else {
         const page = PAGES[url] ?? {

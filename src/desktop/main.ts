@@ -2,12 +2,18 @@
  * Boot — Scene(onDemand) → DesktopShell → icon grid → seed VFS → devtools hook.
  */
 
-import { Scene } from '@vectojs/core';
+import { Scene, SVGEntity } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
+import { Button, Text } from '@vectojs/ui';
 import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
+import { peekNextNoteWindowTitle } from '../apps/notes';
 import { setAppTheme } from '../model/app-theme';
 import { findPreset } from '../model/themes';
+import { StorageVfs } from '../model/storage-vfs';
+import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
+import { clampPosition, fitGeometry } from '../model/window-geometry';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
+import { installStartMenuKeyboard } from './start-menu-keys';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
@@ -43,6 +49,29 @@ function applyTheme(presetId: string): void {
 
 const boot = buildConfig((id) => applyTheme(id));
 shell = new DesktopShell({ scene, config: boot.config });
+
+/**
+ * Per-instance window titles (audit #25 P2-D). The engine titles every
+ * instance with the app's static label, so two terminals or two notes
+ * windows were indistinguishable in the taskbar and for AT. Notes windows
+ * carry their deterministic document name; other multi-instance apps get an
+ * ordinal from the second instance on. The engine has no live-retitle API,
+ * so a save renaming an open window stays out of scope (recorded deferred).
+ */
+const baseOpen = shell.open.bind(shell);
+shell.open = (appId, opts) => {
+  if (!opts?.title) {
+    if (appId === 'notes') {
+      return baseOpen(appId, { ...opts, title: peekNextNoteWindowTitle() });
+    }
+    const app = boot.config.apps?.find((a) => a.id === appId);
+    const openCount = shell.windowManager.listByApp(appId).length + 1;
+    if (app?.instances === 'multiple' && openCount > 1) {
+      return baseOpen(appId, { ...opts, title: `${app.title} ${openCount}` });
+    }
+  }
+  return baseOpen(appId, opts);
+};
 
 // ---------------------------------------------------------------- viewport
 
@@ -111,6 +140,7 @@ function fit(): void {
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
   recenterWindowsPreservingOffset(vp.w, vp.h);
+  clampWindowsToWorkArea();
   // fit() runs before the icon grid exists at boot (TDZ guard).
   if (iconsReady) layoutIcons();
 }
@@ -142,6 +172,24 @@ function focusedWindow(): DesktopWindow | null {
 
 function workArea(): { x: number; y: number; width: number; height: number } {
   return shell.layout.workArea(shell.layout.primary().id);
+}
+
+/**
+ * Pull any window whose box escapes the work area back inside — without
+ * re-positioning windows that are already inside (audit #25 P2-B). Runs on
+ * every viewport resize: the aspect-changing path skips re-centering by
+ * design (measured +349,+129 shift), so clamping is the only correction a
+ * narrow viewport gets.
+ */
+function clampWindowsToWorkArea(): void {
+  const area = workArea();
+  for (const win of shell.windowManager.list()) {
+    if (win.maximized || win.minimized) continue;
+    const pos = clampPosition(win.x, win.y, win.width, win.height, area);
+    if (pos.x !== win.x || pos.y !== win.y) {
+      win.setGeometry(pos.x, pos.y, win.width, win.height);
+    }
+  }
 }
 
 function snapFocused(dir: 'left' | 'right' | 'top' | 'bottom'): void {
@@ -180,6 +228,15 @@ document.addEventListener('keydown', (e) => {
   const editable =
     !!target &&
     (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+  // Browser-native chords a desktop owns are swallowed BEFORE the editable
+  // bail-out (review PX-0079): none of s/p/o/r/g/d is a text-editing key, so
+  // gating them on focus bought nothing — it only leaked Ctrl+P through to
+  // the native print dialog when typing in Notes/Terminal.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
+    e.preventDefault();
+  }
+
   if (editable) return;
   if (e.key === 'F5' || e.key === 'F12') {
     e.preventDefault();
@@ -187,9 +244,6 @@ document.addEventListener('keydown', (e) => {
   }
   // The ShortcutRouter preventDefaults its own mapped chords; this only
   // swallows the browser's default bindings, never editable input.
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
-    e.preventDefault();
-  }
   // Snap/tiling gestures (Ctrl+Alt — disjoint from the browser shortcuts above).
   if (e.ctrlKey && e.altKey) {
     if (SNAP_KEYS.has(e.key)) {
@@ -250,6 +304,34 @@ scene.add(catcher);
 
 // Order: catcher → shell → size → rAF → icons → marquee → initial windows
 shell.start();
+
+/**
+ * Taskbar overflow guard (audit #25 P2-B): the engine's rebuild() places each
+ * entry BEFORE checking the remaining host width, so the last button can
+ * spill past the entries host toward the clock on narrow viewports. Clipping
+ * that host truncates the spill at the boundary; Start and the clock stay
+ * pinned and clear. The entries host is engine-private, so it is identified
+ * structurally (the bar's non-control child) and the fix fails safe to a
+ * no-op if a future desktop package reshapes the subtree.
+ */
+function clipTaskbarEntries(): void {
+  const tb = shell.taskbar;
+  if (!tb) return;
+  for (const bar of tb.children) {
+    for (const child of bar.children) {
+      const isControl =
+        child instanceof Button || child instanceof Text || child instanceof SVGEntity;
+      if (!isControl && child.width > 0) {
+        child.clipChildren = true;
+        return;
+      }
+    }
+  }
+}
+clipTaskbarEntries();
+// Start menu: focus the first item on open + arrow-key roving (audit #25 P2-C).
+installStartMenuKeyboard(shell);
+
 fit();
 scene.start();
 
@@ -304,23 +386,40 @@ scene.add(marquee);
 void (async () => {
   const vfs = boot.config.vfs;
   if (vfs) {
-    await vfs.mkdir('/docs');
-    await vfs.mkdir('/notes');
-    await vfs.mkdir('/system');
-    await vfs.write(
-      '/docs/readme.txt',
-      'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Ctrl+Alt+T:    New Terminal\n  • Ctrl+N:        New Notepad\n  • Ctrl+W:        Close Focused Window\n  • Ctrl+Space:    Toggle Start Menu\n',
-    );
-    await vfs.write(
-      '/docs/shortcuts.txt',
-      'Keybindings:\n  • Ctrl+Space  - Start Menu\n  • Ctrl+N      - Notes\n  • Ctrl+Alt+T  - Terminal\n  • Ctrl+W      - Close Window\n',
-    );
+    // Durable VFS (audit #25 P1-B): when a snapshot restored, it already
+    // holds the user's copies of the seed documents — reseeding would clobber
+    // them, so seeds apply to first boot only. Dirs stay unconditional.
+    let restoredAny = false;
+    if (vfs instanceof StorageVfs) restoredAny = await vfs.restored;
+    for (const dir of SEED_DIRS) await vfs.mkdir(dir);
+    if (!restoredAny) {
+      for (const [path, content] of Object.entries(SEED_DOCS)) await vfs.write(path, content);
+    }
   }
 
+  // Boot spawns shrink to fit narrow viewports instead of overflowing them
+  // (audit #25 P2-B): preferred geometry first, fitted to the live scene.
+  const tbH = shell.taskbar ? shell.taskbar.height : 40;
   const termWin: DesktopWindow | null = shell.open('terminal');
-  if (termWin) termWin.setGeometry(200, 36, 540, 380);
+  if (termWin) {
+    const g = fitGeometry(
+      { x: 200, y: 36, width: 540, height: 380 },
+      scene.width,
+      scene.height,
+      tbH,
+    );
+    termWin.setGeometry(g.x, g.y, g.width, g.height);
+  }
   const filesWin: DesktopWindow | null = shell.open('files');
-  if (filesWin) filesWin.setGeometry(560, 80, 520, 470);
+  if (filesWin) {
+    const g = fitGeometry(
+      { x: 560, y: 80, width: 520, height: 470 },
+      scene.width,
+      scene.height,
+      tbH,
+    );
+    filesWin.setGeometry(g.x, g.y, g.width, g.height);
+  }
   scene.markDirty();
 })();
 

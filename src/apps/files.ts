@@ -6,10 +6,15 @@
 import type { AppContext, AppDefinition, Vfs } from '@vectojs/desktop';
 import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, p, ScrollableClientRoot, t } from '../app/ui-helpers';
+import { openConfirmDialog } from '../app/confirm-dialog';
 import { HRule } from './_hrule';
 import { appIconSvg } from '../desktop/icons';
+import { SEED_DOCS } from '../model/seed-docs';
 
 type VfsEntry = Awaited<ReturnType<Vfs['list']>>[number];
+
+/** Preview character ceiling — parity with the browser's truncated hint. */
+const PREVIEW_LIMIT = 2000;
 
 class FilesContent extends Stack {
   constructor(
@@ -127,7 +132,13 @@ export const filesApp: AppDefinition = {
       }
       try {
         const data = await ctx.vfs.read(target);
-        preview.setText(data.slice(0, 2000));
+        // Truncation hint parity with the browser (audit #25 P2-D): a silent
+        // cut read like a complete file.
+        preview.setText(
+          data.length > PREVIEW_LIMIT
+            ? `${data.slice(0, PREVIEW_LIMIT)}\n\n[Preview truncated — showing ${PREVIEW_LIMIT} of ${data.length} characters. Open the file in Notes to read the rest.]`
+            : data,
+        );
       } catch {
         preview.setText('(No such file or directory)');
       }
@@ -175,7 +186,7 @@ export const filesApp: AppDefinition = {
         '🌱 Seed Samples',
         true,
         () => {
-          void seedSamples(ctx.vfs).then(refresh);
+          void confirmSeedSamples(ctx).then(refresh);
         },
         'Seed Samples',
       ),
@@ -217,17 +228,38 @@ export const filesApp: AppDefinition = {
   },
 };
 
+/**
+ * Rewrite the sample documents from the shared seed constant. Overwriting
+ * existing files asks first (audit #25 P2-D) — the old silent overwrite could
+ * destroy user edits to /docs with no warning.
+ */
+async function confirmSeedSamples(ctx: AppContext): Promise<void> {
+  if (!ctx.vfs) return;
+  const existing = await Promise.all(
+    Object.keys(SEED_DOCS).map(async (path) => (await ctx.vfs?.stat(path)) !== null),
+  );
+  const overwrites = existing.some(Boolean);
+  if (
+    overwrites &&
+    (await openConfirmDialog(ctx.windowManager, {
+      title: 'Overwrite sample documents?',
+      message:
+        'Seeding replaces /docs/readme.txt and /docs/shortcuts.txt with their original copies. Your edits to them are lost.',
+      confirmLabel: 'Replace',
+    })) !== 'confirm'
+  ) {
+    return;
+  }
+  await seedSamples(ctx.vfs);
+}
+
 async function seedSamples(vfs: Vfs | null): Promise<void> {
   if (!vfs) return;
   await vfs.mkdir('/notes');
   await vfs.mkdir('/docs');
   await vfs.mkdir('/system');
-  await vfs.write(
-    '/docs/readme.txt',
-    'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nUse Ctrl+N for Notes, or double click any desktop icon.\n',
-  );
-  await vfs.write(
-    '/docs/shortcuts.txt',
-    '- Start Menu: Ctrl+Space\n- New Notes: Ctrl+N\n- Close Window: Ctrl+W\n- Maximize: Double-click Titlebar\n',
-  );
+  // Same source as the boot seeder — the two copies can no longer drift.
+  for (const [path, content] of Object.entries(SEED_DOCS)) {
+    await vfs.write(path, content);
+  }
 }
