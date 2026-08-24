@@ -129,7 +129,8 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
         'Control+n': { type: 'open-app', appId: 'notes' },
         // Ctrl+P deliberately unbound (audit #25 P2-D): print reflex kept
         // launching Paint. Paint stays reachable via icon/menu; the shell's
-        // document-level guard already preventDefaults browser Print.
+        // guard preventDefaults browser Print everywhere — including inside
+        // editable targets — so typing cannot reopen it either.
         'Control+e': { type: 'open-app', appId: 'files' },
         'Control+b': { type: 'open-app', appId: 'browser' },
         'Control+Alt+t': { type: 'open-app', appId: 'terminal' },

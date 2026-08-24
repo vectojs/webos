@@ -228,6 +228,15 @@ document.addEventListener('keydown', (e) => {
   const editable =
     !!target &&
     (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+  // Browser-native chords a desktop owns are swallowed BEFORE the editable
+  // bail-out (review PX-0079): none of s/p/o/r/g/d is a text-editing key, so
+  // gating them on focus bought nothing — it only leaked Ctrl+P through to
+  // the native print dialog when typing in Notes/Terminal.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
+    e.preventDefault();
+  }
+
   if (editable) return;
   if (e.key === 'F5' || e.key === 'F12') {
     e.preventDefault();
@@ -235,9 +244,6 @@ document.addEventListener('keydown', (e) => {
   }
   // The ShortcutRouter preventDefaults its own mapped chords; this only
   // swallows the browser's default bindings, never editable input.
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
-    e.preventDefault();
-  }
   // Snap/tiling gestures (Ctrl+Alt — disjoint from the browser shortcuts above).
   if (e.ctrlKey && e.altKey) {
     if (SNAP_KEYS.has(e.key)) {
