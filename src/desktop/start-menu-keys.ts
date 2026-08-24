@@ -8,6 +8,7 @@
  *
  * - opening the menu focuses its first item immediately;
  * - ArrowUp/ArrowDown/Home/End rove focus across the items while open;
+ * - closing the menu (any path) restores focus to the element that opened it;
  * - Escape-dismissal and click-launch stay engine-owned.
  *
  * The shell's toggleStartMenu is wrapped (public API), never patched
@@ -56,10 +57,58 @@ export function installStartMenuKeyboard(shell: DesktopShell): void {
     items[0].focus();
   };
 
+  /**
+   * Focus restoration (review PX-0077): the engine's closeStartMenu prunes
+   * the menu's mirror elements synchronously (hideOverlay →
+   * removeA11yRecursively) and never refocuses, so every dismissal dropped
+   * DOM focus on document.body. The opener is captured at open and handed
+   * back when the menu is observed gone — from the toggle path below, or
+   * from the capture-phase observers for engine-owned dismissal.
+   */
+  let opener: HTMLElement | null = null;
+  let openTracked = false;
+
+  const restoreIfAbandoned = (): void => {
+    if (!openTracked || openStartMenu(shell) !== null) return;
+    openTracked = false;
+    const el = opener;
+    opener = null;
+    // Only rescue focus that actually fell off; if dismissal already moved
+    // it onto another control (e.g. a clicked taskbar mirror), that one
+    // wins. A click-launch leaves the flag set until the next observed
+    // event, but by then the opened window holds focus (not body), so this
+    // clears state without stealing anything.
+    const active = document.activeElement;
+    if (
+      el instanceof HTMLElement &&
+      el.isConnected &&
+      (active === null || active === document.body)
+    ) {
+      el.focus();
+      shell.scene.markDirty();
+    }
+  };
+
   shell.toggleStartMenu = () => {
+    const opening = openStartMenu(shell) === null;
+    if (opening) {
+      const active = document.activeElement;
+      opener = active instanceof HTMLElement ? active : null;
+      openTracked = true;
+    }
     baseToggle();
+    // Toggle-close lands here synchronously; after baseToggle() the mirrors
+    // are already pruned and focus sits on body.
+    restoreIfAbandoned();
     focusFirstItem();
   };
+
+  // Engine-owned dismissals bypass the wrapper: Escape and outside
+  // pointerdown are handled by document CAPTURE listeners registered at
+  // shell.start(), before these — so these same-phase observers always run
+  // after the engine within the very event that closed the menu.
+  document.addEventListener('keydown', restoreIfAbandoned, true);
+  document.addEventListener('pointerdown', restoreIfAbandoned, true);
 
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
