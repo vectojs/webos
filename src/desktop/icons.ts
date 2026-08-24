@@ -177,6 +177,19 @@ export class DesktopIcon extends Entity {
       }
       this.scene?.markDirty();
     });
+    // Keyboard activation (audit #25 P1-A): the core synthesizes `click` from
+    // Enter/Space on the projected mirror for interactive roles, so the icon's
+    // `role="button"` promise is honored here. Entity-level `keydown` never
+    // fires for plain (non-input) mirrors, so this is the only transport.
+    // Pointer clicks arrive through the same event with a mouse nativeEvent —
+    // those must keep the double-click-to-launch metaphor, hence the key check.
+    this.on('click', (e) => {
+      const native = e.nativeEvent as KeyboardEvent | undefined;
+      if (!native || (native.key !== 'Enter' && native.key !== ' ')) return;
+      this.lastClickTime = 0;
+      this.onLaunch(this.appId);
+      this.scene?.markDirty();
+    });
   }
 
   public setSelected(selected: boolean): void {
