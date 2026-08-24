@@ -5,7 +5,7 @@
  */
 
 import type { WebosConfig } from '@vectojs/desktop';
-import { MemoryVfs } from '@vectojs/desktop';
+import { StorageVfs } from './model/storage-vfs';
 import { aboutApp } from './apps/about';
 import { browserApp } from './apps/browser';
 import { calculatorApp } from './apps/calculator';
@@ -78,6 +78,19 @@ export function persistTheme(presetId: string): void {
 }
 
 /**
+ * Best-effort localStorage handle for the durable VFS (audit #25 P1-B).
+ * Null in environments without storage (SSR, privacy mode) — StorageVfs then
+ * degrades to plain memory semantics.
+ */
+function persistentStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Assemble the shell config. `onTheme` is injected by the boot layer so the
  * apps stay free of globals.
  */
@@ -126,7 +139,9 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
         'Meta+Space': { type: 'toggle-start' },
         'Control+Space': { type: 'toggle-start' },
       },
-      vfs: new MemoryVfs(),
+      // Durable across reloads (audit #25 P1-B): notes and docs survive via a
+      // debounced localStorage snapshot; null storage degrades to memory.
+      vfs: new StorageVfs(persistentStorage()),
     },
   };
 }

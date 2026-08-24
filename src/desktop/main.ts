@@ -7,6 +7,7 @@ import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
 import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
 import { setAppTheme } from '../model/app-theme';
 import { findPreset } from '../model/themes';
+import { StorageVfs } from '../model/storage-vfs';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 
 const root = document.getElementById('root');
@@ -307,14 +308,21 @@ void (async () => {
     await vfs.mkdir('/docs');
     await vfs.mkdir('/notes');
     await vfs.mkdir('/system');
-    await vfs.write(
-      '/docs/readme.txt',
-      'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Ctrl+Alt+T:    New Terminal\n  • Ctrl+N:        New Notepad\n  • Ctrl+W:        Close Focused Window\n  • Ctrl+Space:    Toggle Start Menu\n',
-    );
-    await vfs.write(
-      '/docs/shortcuts.txt',
-      'Keybindings:\n  • Ctrl+Space  - Start Menu\n  • Ctrl+N      - Notes\n  • Ctrl+Alt+T  - Terminal\n  • Ctrl+W      - Close Window\n',
-    );
+    let restoredAny = false;
+    if (vfs instanceof StorageVfs) restoredAny = await vfs.restored;
+    if (!restoredAny) {
+      // Durable VFS (audit #25 P1-B): a restored snapshot already holds the
+      // user's copies of the seed documents — reseeding would clobber them,
+      // so seeds apply to first boot only.
+      await vfs.write(
+        '/docs/readme.txt',
+        'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Ctrl+Alt+T:    New Terminal\n  • Ctrl+N:        New Notepad\n  • Ctrl+W:        Close Focused Window\n  • Ctrl+Space:    Toggle Start Menu\n',
+      );
+      await vfs.write(
+        '/docs/shortcuts.txt',
+        'Keybindings:\n  • Ctrl+Space  - Start Menu\n  • Ctrl+N      - Notes\n  • Ctrl+Alt+T  - Terminal\n  • Ctrl+W      - Close Window\n',
+      );
+    }
   }
 
   const termWin: DesktopWindow | null = shell.open('terminal');
