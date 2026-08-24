@@ -11,6 +11,7 @@ import { findPreset } from '../model/themes';
 import { StorageVfs } from '../model/storage-vfs';
 import { clampPosition, fitGeometry } from '../model/window-geometry';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
+import { installStartMenuKeyboard } from './start-menu-keys';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
@@ -297,6 +298,8 @@ function clipTaskbarEntries(): void {
   }
 }
 clipTaskbarEntries();
+// Start menu: focus the first item on open + arrow-key roving (audit #25 P2-C).
+installStartMenuKeyboard(shell);
 
 fit();
 scene.start();
