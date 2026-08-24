@@ -140,6 +140,8 @@ export class DesktopIcon extends Entity {
     this.label = new Text(label, {
       font: '600 11px "Segoe UI", system-ui, sans-serif',
       color: '#ffffff',
+      maxWidth: this.width,
+      textAlign: 'center',
     });
     this.label.y = 42;
     this.label.interactive = false;
@@ -203,8 +205,6 @@ export class DesktopIcon extends Entity {
   }
 
   public override render(r: IRenderer): void {
-    // ui Text has no center align — center the measured label under the icon.
-    this.label.x = Math.max(0, Math.round((this.width - this.label.width) / 2));
     if (this.selected || this.hovered || this.focused) {
       r.beginPath();
       r.roundRect(0, 0, this.width, this.height, 6);
