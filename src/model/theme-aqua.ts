@@ -21,11 +21,11 @@ export const aquaPreset: ThemePreset = {
   tokens: {
     'desktop-wallpaper': '#3d405b',
     'desktop-window-bg': '#ffffff',
-    'desktop-window-border': '#d1d5db',
+    'desktop-window-border': '#878e98',
     'desktop-titlebar-bg': '#f3f4f6',
     'desktop-titlebar-fg': '#111827',
     'desktop-titlebar-height': 28,
-    'desktop-close-bg': '#ef4444',
+    'desktop-close-bg': '#dc2626',
     'desktop-close-fg': '#ffffff',
     'desktop-focus-ring': '#3b82f6',
     'desktop-radius': 10,

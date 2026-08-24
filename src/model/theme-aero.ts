@@ -27,11 +27,11 @@ export const aeroPreset: ThemePreset = {
   tokens: {
     'desktop-wallpaper': '#2572b4',
     'desktop-window-bg': '#ffffff',
-    'desktop-window-border': '#7ca3cd',
+    'desktop-window-border': '#5e86ad',
     'desktop-titlebar-bg': '#cfe2f8',
     'desktop-titlebar-fg': '#0b2d52',
     'desktop-titlebar-height': 30,
-    'desktop-close-bg': '#e81123',
+    'desktop-close-bg': '#d90b1b',
     'desktop-close-fg': '#ffffff',
     'desktop-focus-ring': '#2572b4',
     'desktop-radius': 6,

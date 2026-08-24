@@ -1,4 +1,5 @@
 import type { AppThemeTokens, ThemePreset } from './theme-types';
+import { contrastRatio } from './contrast';
 
 let current: AppThemeTokens = {
   surface: '#ffffff',
@@ -28,10 +29,10 @@ export function setAppTheme(preset: ThemePreset): void {
     surfaceRaised: colorToken(tokens['desktop-start-hover'], 'desktop-start-hover'),
     surfaceSunken: colorToken(tokens['desktop-start-bg'], 'desktop-start-bg'),
     text: colorToken(tokens['desktop-start-fg'], 'desktop-start-fg'),
-    textMuted: blend(
+    textMuted: blendForContrast(
       colorToken(tokens['desktop-start-fg'], 'desktop-start-fg'),
       colorToken(tokens['desktop-window-bg'], 'desktop-window-bg'),
-      0.55,
+      4.6,
     ),
     border: colorToken(tokens['desktop-window-border'], 'desktop-window-border'),
     accent: colorToken(tokens['desktop-focus-ring'], 'desktop-focus-ring'),
@@ -39,10 +40,9 @@ export function setAppTheme(preset: ThemePreset): void {
     accentHover: colorToken(tokens['desktop-taskbar-active'], 'desktop-taskbar-active'),
     focus: colorToken(tokens['desktop-focus-ring'], 'desktop-focus-ring'),
     danger: colorToken(tokens['desktop-close-bg'], 'desktop-close-bg'),
-    dangerSurface: blend(
+    dangerSurface: dangerTintedSurface(
       colorToken(tokens['desktop-close-bg'], 'desktop-close-bg'),
-      colorToken(tokens['desktop-window-bg'], 'desktop-window-bg'),
-      0.84,
+      4.5,
     ),
     inputSurface: colorToken(tokens['desktop-window-bg'], 'desktop-window-bg'),
   };
@@ -73,6 +73,39 @@ function blend(foreground: string, background: string, amount: number): string {
   return `#${[mix(fg[0], bg[0]), mix(fg[1], bg[1]), mix(fg[2], bg[2])]
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('')}`;
+}
+
+/**
+ * Largest blend toward `background` whose contrast against it still clears
+ * `target` (WEB-0026: muted text must stay >= 4.5:1 on every preset while
+ * remaining visibly secondary to the primary text).
+ */
+function blendForContrast(foreground: string, background: string, target: number): string {
+  let lo = 0;
+  let hi = 0.6;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (contrastRatio(blend(foreground, background, mid), background) >= target) lo = mid;
+    else hi = mid;
+  }
+  return blend(foreground, background, Math.floor(lo * 100) / 100);
+}
+
+/**
+ * Danger surface tinted away from the danger color until the pair clears
+ * `target` (WEB-0026). Prefers a soft white wash; light danger colors (beige,
+ * neon cyan) fall back to a dark tint so the pair keeps its floor.
+ */
+function dangerTintedSurface(danger: string, target: number): string {
+  for (let percent = 86; percent <= 97; percent++) {
+    const hex = blend(danger, '#ffffff', percent / 100);
+    if (contrastRatio(danger, hex) >= target) return hex;
+  }
+  for (let percent = 82; percent <= 96; percent++) {
+    const hex = blend(danger, '#000000', percent / 100);
+    if (contrastRatio(danger, hex) >= target) return hex;
+  }
+  return blend(danger, '#ffffff', 0.95);
 }
 
 function parseHex(value: string): [number, number, number] | null {

@@ -29,11 +29,11 @@ export const cloudPreset: ThemePreset = {
   tokens: {
     'desktop-wallpaper': '#37474f',
     'desktop-window-bg': '#f8fafc',
-    'desktop-window-border': '#94a3b8',
+    'desktop-window-border': '#64748b',
     'desktop-titlebar-bg': '#e2e8f0',
     'desktop-titlebar-fg': '#0f172a',
     'desktop-titlebar-height': 32,
-    'desktop-close-bg': '#f43f5e',
+    'desktop-close-bg': '#d51040',
     'desktop-close-fg': '#ffffff',
     'desktop-focus-ring': '#0284c7',
     'desktop-radius': 12,
