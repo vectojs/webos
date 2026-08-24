@@ -17,7 +17,7 @@ import { createSettingsApp } from './apps/settings';
 import { sysmonApp } from './apps/sysmon';
 import { createTerminalApp } from './apps/terminal';
 import { aeroPreset } from './model/theme-aero';
-import { setAppTheme } from './model/app-theme';
+import { appTheme, setAppTheme } from './model/app-theme';
 
 /** A raw SVG string is not a loadable Image URL — wrap as a data URL. */
 export function svgDataUrl(svg: string): string {
@@ -121,7 +121,9 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
       desktop: {
         wallpaper: preset.wallpaperBg,
         wallpaperImage: preset.wallpaperCdnUrl || svgDataUrl(preset.wallpaperSvg),
-        taskbarHeight: 40,
+        // Era bar height (WEB-0034): keeps the engine's placement math in
+        // sync with the WebOS-owned bar from the very first mount.
+        taskbarHeight: appTheme().taskbarHeight,
         taskbarPosition: 'bottom',
       },
       theme: { ...preset.tokens },

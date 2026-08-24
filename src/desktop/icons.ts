@@ -102,6 +102,86 @@ export function appIconSvg(appId: string): string | undefined {
   return ICON_DEFS[appId]?.svg;
 }
 
+// ------------------------------------------------------- era icon treatments
+// Spec 2026-08-24 §3.4: per-era treatments as data-level wrappers around the
+// 24x24 defs. Each treatment layers era-telling chrome (gloss, bevels, neon,
+// haze) over the same base glyph so every preset reads differently.
+
+type IconTreatment = {
+  /** Layers inserted BEFORE the base glyph (under it). */
+  under?: string;
+  /** Layers appended AFTER the base glyph (over it). */
+  over?: string;
+};
+
+const ICON_TREATMENTS: Record<string, IconTreatment> = {
+  // Fluent flat: subtle bottom-edge darker rim.
+  aero: {
+    over: '<rect x="2" y="18" width="20" height="4.5" rx="2.25" fill="rgba(0,0,0,0.12)"/>',
+  },
+  // Material: 2px drop shadow via feDropShadow.
+  cloud: {
+    over:
+      '<rect x="0" y="0" width="0" height="0" fill="none" filter="url(#cloudSh)"/>' +
+      '<defs><filter id="cloudSh" x="-20%" y="-20%" width="140%" height="140%">' +
+      '<feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.35"/></filter></defs>',
+  },
+  // Breeze: flat 1.5px outline, no gradient.
+  breeze: {
+    over: '<rect x="2" y="2" width="20" height="20" rx="3" fill="none" stroke="#8C9196" stroke-width="1.5" opacity="0.9"/>',
+  },
+  // Aqua candy: vertical gloss ellipse on the upper half.
+  aqua: {
+    over:
+      '<defs><linearGradient id="aquaGloss" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="rgba(255,255,255,0.55)"/>' +
+      '<stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient></defs>' +
+      '<ellipse cx="12" cy="8" ry="6" rx="9" fill="url(#aquaGloss)"/>',
+  },
+  // Win98 beveled tile: light TL / dark BR pixel borders.
+  y2k: {
+    under:
+      '<path d="M2 22 L2 2 L22 2 L22 4 L4 4 L4 22 Z" fill="#FFFFFF"/>' +
+      '<path d="M22 2 L22 22 L2 22 L2 20 L20 20 L20 2 Z" fill="#404040"/>',
+  },
+  // Vaporwave neon wireframe: dark plate + cyan/pink double stroke.
+  vaporwave: {
+    under: '<rect x="2" y="2" width="20" height="20" rx="2" fill="rgba(10,4,26,0.85)"/>',
+    over:
+      '<rect x="2" y="2" width="20" height="20" rx="2" fill="none" stroke="#01CDFE" stroke-width="1.5"/>' +
+      '<rect x="4" y="4" width="16" height="16" rx="1.5" fill="none" stroke="#FF71CE" stroke-width="1" opacity="0.8"/>',
+  },
+  // Dreamcore pastel duotone: white haze wash.
+  dreamcore: {
+    over: '<rect x="1" y="1" width="22" height="22" rx="5" fill="rgba(255,255,255,0.30)"/>',
+  },
+};
+
+/** Active preset id for icon treatments; '' = untreated bases. */
+let iconPresetId = '';
+
+/** Set the era whose icon treatments apply (called by the theme path). */
+export function setIconPreset(presetId: string): void {
+  iconPresetId = presetId;
+}
+
+/** The currently applied icon-era id. */
+export function getIconPreset(): string {
+  return iconPresetId;
+}
+
+/**
+ * Base def wrapped in the active era's treatment. Unknown app ids fall back
+ * to the emoji placeholder (treated like any other glyph).
+ */
+export function themedIconSvg(appId: string, presetId: string): string {
+  const base = ICON_DEFS[appId]?.svg ?? fallbackSvg('❓');
+  const t = ICON_TREATMENTS[presetId];
+  if (!t) return base;
+  const inner = base.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+  return `${base.slice(0, base.indexOf('>') + 1)}${t.under ?? ''}${inner}${t.over ?? ''}</svg>`;
+}
+
 export interface DesktopIconSpec {
   id: string;
   appId: string;
@@ -114,6 +194,7 @@ export class DesktopIcon extends Entity {
   private focused = false;
   private selected = false;
   private lastClickTime = 0;
+  private appliedTreatment = '';
   private readonly icon: SVGEntity;
   private readonly label: Text;
 
@@ -128,8 +209,9 @@ export class DesktopIcon extends Entity {
     this.height = 76;
     this.interactive = true;
 
-    const svg = ICON_DEFS[appId]?.svg ?? fallbackSvg('❓');
+    const svg = themedIconSvg(appId, iconPresetId);
     this.icon = new SVGEntity(svg);
+    this.appliedTreatment = iconPresetId;
     this.icon.width = 32;
     this.icon.height = 32;
     this.icon.x = (this.width - 32) / 2;
@@ -218,6 +300,12 @@ export class DesktopIcon extends Entity {
   }
 
   public override render(r: IRenderer): void {
+    // Re-skin the glyph when the era changed (theme switch path calls
+    // setIconPreset then markDirty; SVGEntity re-rasterizes lazily).
+    if (this.appliedTreatment !== iconPresetId) {
+      this.appliedTreatment = iconPresetId;
+      this.icon.setSVGSource(themedIconSvg(this.appId, iconPresetId));
+    }
     if (this.selected || this.hovered || this.focused) {
       r.beginPath();
       r.roundRect(0, 0, this.width, this.height, 6);

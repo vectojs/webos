@@ -180,8 +180,10 @@ describe('boot smoke', () => {
   function parkFocusOnTaskbarButton(scene: Scene, shell: DesktopShell): HTMLElement {
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
     ensureStartMenuClosed(scene);
+    // WEB-0034: the bar is WebOS-owned; entries are entity-drawn buttons, so
+    // park focus on the first projected `role="button"` mirror (Start tile).
     const startButton = descendants(shell.taskbar!).find(
-      (entity): entity is Button => entity instanceof Button,
+      (entity) => entity.getA11yAttributes().role === 'button',
     );
     if (!startButton) throw new Error('Missing taskbar button');
     const mirror = document.getElementById(startButton.id);
