@@ -9,19 +9,34 @@ describe('app theme', () => {
     setAppTheme(vaporwavePreset);
 
     expect(appTheme()).toEqual({
-      surface: '#120524',
-      surfaceRaised: '#3d1a5b',
+      surface: '#160A2E',
+      surfaceRaised: '#3D1A5B',
       surfaceSunken: '#120524',
-      text: '#05ffa1',
-      textMuted: '#0b8c68',
-      border: '#ff71ce',
-      accent: '#05ffa1',
+      text: '#05FFA1',
+      textMuted: '#0d916d',
+      border: '#FF71CE',
+      accent: '#05FFA1',
       accentText: '#000000',
-      accentHover: '#01cdfe',
-      focus: '#05ffa1',
-      danger: '#01cdfe',
+      accentHover: '#01CDFE',
+      focus: '#05FFA1',
+      danger: '#01CDFE',
       dangerSurface: '#00252e',
-      inputSurface: '#120524',
+      inputSurface: '#160A2E',
+      menuBg: '#160A2E',
+      menuBorder: '#FF71CE',
+      menuHover: '#3D1A5B',
+      menuRadius: 2,
+      trayBg: null,
+      buttonShape: 'rounded',
+      chromeFont: '"Segoe UI",system-ui,sans-serif',
+      taskbarHeight: 44,
+      windowShadow: '0 0 26 rgba(255,113,206,.28)',
+      titlebarGradientTo: null,
+      titlebarInactiveBg: '#12071F',
+      titlebarInactiveFg: '#8F5BB0',
+      bevel: null,
+      pinstripe: null,
+      glow: { color: '#FF71CE', strength: 2 },
     });
   });
 
@@ -29,9 +44,9 @@ describe('app theme', () => {
     setAppTheme(vaporwavePreset);
     setAppTheme(aeroPreset);
 
-    expect(appTheme().surface).toBe('#ffffff');
-    expect(appTheme().text).toBe('#0b2d52');
-    expect(appTheme().accent).toBe('#2572b4');
+    expect(appTheme().surface).toBe('#F3F3F3');
+    expect(appTheme().text).toBe('#1A1A1A');
+    expect(appTheme().accent).toBe('#0067C0');
   });
 
   it('rejects numeric values in color slots', () => {
