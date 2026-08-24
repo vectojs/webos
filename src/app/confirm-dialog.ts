@@ -9,20 +9,21 @@
  * (keep editing); the destructive action is reachable only by explicit Tab
  * navigation or pointer, never by a reflex key.
  *
- * The dialog is window-modal by design (DEC-0006): it overlays its host
- * entity's client area and swallows pointer input there; keyboard handling is
- * gated on the hosting window being focused. All surfaces consume WEB-0012
- * app-theme tokens; interactive primitives keep their forced-colors fallbacks.
- * No DOM is added — the semantic tree carries role=dialog + aria-modal and an
- * accessible name derived from the title, exactly like window chrome.
+ * Since @vectojs/desktop 0.7.0 (WEB-0027) the prompt is a REAL shell-modal:
+ * WindowManager.openDialog hosts the panel in its own always-topmost window,
+ * so modality (focus hold incl. Alt+Tab), Esc dismissal and opener-focus
+ * restore are owned by the window manager instead of an overlay hack. The
+ * window itself projects role=dialog + aria-modal=true with the title as its
+ * accessible name. All surfaces consume WEB-0012 app-theme tokens;
+ * interactive primitives keep their forced-colors fallbacks. No DOM is added.
  */
 
-import { Entity, type A11yAttributes, type IRenderer } from '@vectojs/core';
-import { Button, Text } from '@vectojs/ui';
+import { Entity, type IRenderer } from '@vectojs/core';
+import type { AppContext, DesktopWindow, WindowManager } from '@vectojs/desktop';
+import { Button } from '@vectojs/ui';
 import { p, t, themedButton } from './ui-helpers';
 import { isWindowFocused } from './window-utils';
 import { dialogChoiceForKey, type ConfirmChoice } from '../model/unsaved-guard';
-import { appTheme } from '../model/app-theme';
 
 export interface ConfirmDialogOptions {
   /** Accessible name of the dialog and heading text ("Unsaved changes"). */
@@ -37,10 +38,7 @@ export interface ConfirmDialogOptions {
   cancelLabel?: string;
 }
 
-/** Dimmed backdrop over the host client area; theme-independent like chrome. */
-const BACKDROP = 'rgba(2, 6, 23, 0.45)';
 const PANEL_WIDTH = 360;
-const PANEL_RADIUS = 8;
 const PAD = 16;
 const TITLE_H = 20;
 const MESSAGE_H = 40;
@@ -48,84 +46,74 @@ const BUTTON_W = 84;
 const BUTTON_H = 28;
 const BUTTON_GAP = 8;
 
-export class ConfirmDialog extends Entity {
-  private readonly titleText: Text;
-  private readonly messageText: Text;
-  /** Visual/tab order: destructive isolated left, safe pair right. */
+/**
+ * The prompt's client content: fixed-size themed panel hosting heading,
+ * message and the three actions. Keyboard handling is gated on the hosting
+ * dialog window being focused — which the window manager guarantees while
+ * the modal is open.
+ */
+class ConfirmDialogPanel extends Entity {
   private readonly actions: Button[];
   private readonly confirmAction: Button;
-  private resolve: ((choice: ConfirmChoice) => void) | null = null;
   private focusIndex = 0;
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
 
-  /** Resolves once a choice is made; the dialog removes itself afterwards. */
-  public readonly done: Promise<ConfirmChoice>;
+  /** Invoked with the chosen action; closes the dialog window. */
+  choose: ((choice: ConfirmChoice) => void) | null = null;
 
   constructor(options: ConfirmDialogOptions) {
     super();
-    this.clipChildren = false;
-    this.a11yProjection = 'eager';
+    this.width = PANEL_WIDTH;
+    this.height = PAD + TITLE_H + 8 + MESSAGE_H + 12 + BUTTON_H + PAD;
 
     const confirmLabel = options.confirmLabel ?? 'Save';
     const discardLabel = options.discardLabel ?? 'Discard';
     const cancelLabel = options.cancelLabel ?? 'Cancel';
 
-    this.done = new Promise<ConfirmChoice>((resolve) => {
-      this.resolve = resolve;
-    });
-
-    this.titleText = t(options.title, 14);
-    this.messageText = p(options.message);
-    this.messageText.height = MESSAGE_H;
+    const titleText = t(options.title, 14);
     // Static copy: the dialog element carries the name, buttons carry theirs.
-    this.titleText.interactive = false;
-    this.messageText.interactive = false;
-    this.add(this.titleText, this.messageText);
+    titleText.interactive = false;
+    const messageText = p(options.message);
+    messageText.interactive = false;
+    messageText.setMaxWidth(PANEL_WIDTH - PAD * 2);
 
-    const choose = (choice: ConfirmChoice): void => this.choose(choice);
     // Visual order matters: Discard far from the safe pair, Cancel left of Save.
-    const discard = themedButton(discardLabel, 'danger', () => choose('discard'));
-    const cancel = themedButton(cancelLabel, 'secondary', () => choose('cancel'));
-    this.confirmAction = themedButton(confirmLabel, 'primary', () => choose('confirm'));
+    const discard = themedButton(discardLabel, 'danger', () => this.choose?.('discard'));
+    const cancel = themedButton(cancelLabel, 'secondary', () => this.choose?.('cancel'));
+    this.confirmAction = themedButton(confirmLabel, 'primary', () => this.choose?.('confirm'));
     this.actions = [discard, cancel, this.confirmAction];
     this.focusIndex = this.actions.indexOf(this.confirmAction);
     for (const action of this.actions) {
       action.width = BUTTON_W;
       action.height = BUTTON_H;
-      this.add(action);
+    }
+    this.add(titleText, messageText, ...this.actions);
+
+    titleText.x = PAD;
+    titleText.y = PAD - 2;
+    messageText.x = PAD;
+    messageText.y = TITLE_H + 8;
+    let x = PAD;
+    const rowY = this.height - PAD - BUTTON_H;
+    for (const action of this.actions) {
+      action.x = x;
+      action.y = rowY;
+      x += BUTTON_W + BUTTON_GAP;
     }
   }
 
-  /**
-   * Open against `host`, covering its client area, and resolve with the
-   * chosen action once the user answers. The dialog detaches itself.
-   */
-  public static open(host: Entity, options: ConfirmDialogOptions): Promise<ConfirmChoice> {
-    const dialog = new ConfirmDialog(options);
-    host.add(dialog);
-    return dialog.done;
-  }
-
-  public override getA11yAttributes(): A11yAttributes {
-    return {
-      ...super.getA11yAttributes(),
-      role: 'dialog',
-      ariaModal: 'true',
-      label: this.titleText.text,
-    };
-  }
-
+  // Hit-target like the host: the panel is the dialog's whole client area.
   public override isPointInside(gx: number, gy: number): boolean {
-    // Full-cover backdrop: every pointer hit inside the client area lands on
-    // the dialog (children win the topmost-first walk), never on the editor.
     const local = this.worldToLocal(gx, gy);
     if (!local) return false;
     return local.x >= 0 && local.y >= 0 && local.x <= this.width && local.y <= this.height;
   }
 
+  public override render(_r: IRenderer): void {}
+
   protected override onMounted(): void {
     this.keyListener = (e: KeyboardEvent) => {
-      if (!this.resolve || !isWindowFocused(this)) return;
+      if (!this.choose || !isWindowFocused(this)) return;
       // Modifier chords belong to the shell or browser, same guard as the
       // calculator and terminal.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -157,46 +145,6 @@ export class ConfirmDialog extends Entity {
     super.destroy();
   }
 
-  public override render(r: IRenderer): void {
-    const host = this.parent;
-    const coverW = Math.max(0, host?.width ?? 0);
-    const coverH = Math.max(0, host?.height ?? 0);
-    this.x = 0;
-    this.y = 0;
-    this.width = coverW;
-    this.height = coverH;
-
-    r.beginPath();
-    r.roundRect(0, 0, coverW, coverH, 0);
-    r.fill(BACKDROP);
-
-    const theme = appTheme();
-    const panelW = Math.min(PANEL_WIDTH, Math.max(240, coverW - PAD * 2));
-    const panelH = PAD + TITLE_H + 8 + MESSAGE_H + 12 + BUTTON_H + PAD;
-    const panelX = Math.round((coverW - panelW) / 2);
-    const panelY = Math.round((coverH - panelH) / 2);
-
-    r.beginPath();
-    r.roundRect(panelX, panelY, panelW, panelH, PANEL_RADIUS);
-    r.fill(theme.surfaceRaised);
-    r.stroke(theme.border, 1);
-
-    const innerW = panelW - PAD * 2;
-    this.titleText.x = panelX + PAD;
-    this.titleText.y = panelY + PAD - 2;
-    if (this.messageText.maxWidth !== innerW) this.messageText.setMaxWidth(innerW);
-    this.messageText.x = panelX + PAD;
-    this.messageText.y = this.titleText.y + TITLE_H + 8;
-
-    let x = panelX + PAD;
-    const rowY = panelY + panelH - PAD - BUTTON_H;
-    for (const action of this.actions) {
-      action.x = x;
-      action.y = rowY;
-      x += BUTTON_W + BUTTON_GAP;
-    }
-  }
-
   private moveFocus(index: number): void {
     this.focusIndex = index;
     this.actions[index]?.focus();
@@ -210,14 +158,52 @@ export class ConfirmDialog extends Entity {
     });
     this.scene?.markDirty();
   }
+}
 
-  private choose(choice: ConfirmChoice): void {
-    const resolve = this.resolve;
-    if (!resolve) return;
-    this.resolve = null;
-    const parent = this.parent;
-    if (parent) parent.remove(this);
-    this.destroy();
-    resolve(choice);
-  }
+export function openConfirmDialog(
+  wm: WindowManager,
+  options: ConfirmDialogOptions,
+): Promise<ConfirmChoice> {
+  /**
+   * Resolves with the chosen action once the user answers. Closing the
+   * window by ANY other route (titlebar button, Escape handled upstream,
+   * `ctx.close()`) resolves 'cancel' — the answer can then only ever be a
+   * cancel at worst.
+   */
+  return new Promise<ConfirmChoice>((resolve) => {
+    let settled = false;
+    let panel: ConfirmDialogPanel | null = null;
+    let win: DesktopWindow | null = null;
+    let closeDialog: (() => void) | null = null;
+    let off: () => void = () => {};
+    const finish = (choice: ConfirmChoice): void => {
+      if (settled) return;
+      settled = true;
+      off();
+      resolve(choice);
+    };
+    off = wm.on((event) => {
+      if (event.type === 'close' && win && event.window === win) {
+        if (panel) panel.choose = null;
+        finish('cancel');
+      }
+    });
+    panel = new ConfirmDialogPanel(options);
+    panel.choose = (choice) => {
+      panel!.choose = null;
+      finish(choice);
+      closeDialog?.();
+    };
+    win = wm.openDialog({
+      title: options.title,
+      width: PANEL_WIDTH,
+      height: panel.height,
+      modal: true,
+      dismissible: true,
+      content: (ctx: AppContext) => {
+        closeDialog = () => ctx.close();
+        return panel!;
+      },
+    });
+  });
 }

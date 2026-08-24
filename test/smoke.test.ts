@@ -12,7 +12,7 @@ import type { DesktopShell } from '@vectojs/desktop';
 import { DEFAULT_PRESET } from '../src/config';
 import { appTheme } from '../src/model/app-theme';
 import { findPreset } from '../src/model/themes';
-import { ConfirmDialog } from '../src/app/confirm-dialog';
+import { openConfirmDialog } from '../src/app/confirm-dialog';
 
 interface WebosApi {
   scene: Scene;
@@ -113,15 +113,41 @@ describe('boot smoke', () => {
     }
   });
 
-  it('opens Notes with no confirm dialog mounted at rest', async () => {
+  it('opens Notes with no confirm dialog window at rest', async () => {
     const { scene, shell } = api();
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
     shell.open('notes');
     for (let i = 0; i < 4; i++) scene.step(16.67);
-    const notes = shell.windowManager.list().find((win) => win.appId === 'notes');
-    if (!notes) throw new Error('Missing notes window');
     // WEB-0021 guard is demand-mounted only; boot and idle stay dialog-free.
-    expect(descendants(notes).some((entity) => entity instanceof ConfirmDialog)).toBe(false);
+    // Since WEB-0027 the prompt is a shell dialog (WM window), not an entity
+    // inside the Notes subtree.
+    expect(shell.windowManager.list().some((win) => win.isDialog)).toBe(false);
+  });
+
+  it('opens a shell-modal confirm dialog focused and dismisses on Escape', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    shell.open('notes');
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+
+    const answer = openConfirmDialog(shell.windowManager, {
+      title: 'Unsaved changes',
+      message: 'Save changes to note-1.txt before reloading?',
+    });
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+
+    const dialog = shell.windowManager.list().find((win) => win.isDialog);
+    if (!dialog) throw new Error('Missing dialog window');
+    expect(dialog.focused).toBe(true);
+    const attrs = dialog.getA11yAttributes();
+    expect(attrs.role).toBe('dialog');
+    expect(attrs.ariaModal).toBe('true');
+    expect(attrs.label).toBe('Unsaved changes');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(shell.windowManager.list().some((win) => win.isDialog)).toBe(false);
+    await expect(answer).resolves.toBe('cancel');
   });
 
   it('projects disabled browser history controls and focused window state', async () => {
