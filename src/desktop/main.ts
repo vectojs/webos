@@ -2,9 +2,8 @@
  * Boot — Scene(onDemand) → DesktopShell → icon grid → seed VFS → devtools hook.
  */
 
-import { Scene, SVGEntity } from '@vectojs/core';
+import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
-import { Button, Text } from '@vectojs/ui';
 import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
 import { peekNextNoteWindowTitle } from '../apps/notes';
 import { setAppTheme } from '../model/app-theme';
@@ -14,6 +13,7 @@ import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
 import { clampPosition, fitGeometry } from '../model/window-geometry';
 import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
 import { installStartMenuKeyboard } from './start-menu-keys';
+import { applyTaskbarGuard } from './taskbar-guard';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
@@ -44,6 +44,9 @@ function applyTheme(presetId: string): void {
     target.wallpaperCdnUrl || svgDataUrl(target.wallpaperSvg),
   );
   persistTheme(target.id);
+  // setTheme destroys and remounts the taskbar (engine behavior), dropping any
+  // clip/pin state — re-apply the guard to the fresh bar (#27).
+  guardTaskbar();
   scene.markDirty();
 }
 
@@ -135,10 +138,22 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
 
 let iconsReady = false;
 
+/**
+ * Taskbar guard (#27): the engine's clock only moves when the formatted minute
+ * string changes, so the boot-time placement (made at default canvas width)
+ * and any same-minute resize leave it stale — into the entries region. Pin it
+ * and clip the entries host on every fit; the window-manager subscription
+ * below covers runtime content changes without a viewport event.
+ */
+function guardTaskbar(): void {
+  if (shell.taskbar) applyTaskbarGuard(shell.taskbar);
+}
+
 function fit(): void {
   const vp = viewportCssSize();
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
+  guardTaskbar();
   recenterWindowsPreservingOffset(vp.w, vp.h);
   clampWindowsToWorkArea();
   // fit() runs before the icon grid exists at boot (TDZ guard).
@@ -305,34 +320,13 @@ scene.add(catcher);
 // Order: catcher → shell → size → rAF → icons → marquee → initial windows
 shell.start();
 
-/**
- * Taskbar overflow guard (audit #25 P2-B): the engine's rebuild() places each
- * entry BEFORE checking the remaining host width, so the last button can
- * spill past the entries host toward the clock on narrow viewports. Clipping
- * that host truncates the spill at the boundary; Start and the clock stay
- * pinned and clear. The entries host is engine-private, so it is identified
- * structurally (the bar's non-control child) and the fix fails safe to a
- * no-op if a future desktop package reshapes the subtree.
- */
-function clipTaskbarEntries(): void {
-  const tb = shell.taskbar;
-  if (!tb) return;
-  for (const bar of tb.children) {
-    for (const child of bar.children) {
-      const isControl =
-        child instanceof Button || child instanceof Text || child instanceof SVGEntity;
-      if (!isControl && child.width > 0) {
-        child.clipChildren = true;
-        return;
-      }
-    }
-  }
-}
-clipTaskbarEntries();
 // Start menu: focus the first item on open + arrow-key roving (audit #25 P2-C).
 installStartMenuKeyboard(shell);
 
 fit();
+// Window open/close/retitle reflow taskbar entries with no viewport event;
+// ride the same window-manager stream the engine's rebuild() uses (#27).
+shell.windowManager.on(() => guardTaskbar());
 scene.start();
 
 const startX = 14;
