@@ -15,7 +15,7 @@ import type { AppDefinition } from '@vectojs/desktop';
 import { Entity, type IRenderer } from '@vectojs/core';
 import { DOCUMENT_SCROLL_PHYSICS, ScrollView, Stack, Text } from '@vectojs/ui';
 import { btn, ClientRoot, p, t, ThemedInput, vstack } from '../app/ui-helpers';
-import { humanizeProxyError } from '../model/proxy-errors';
+import { classifySiteStatus, humanizeProxyError, siteFailureCopy } from '../model/proxy-errors';
 import { appIconSvg } from '../desktop/icons';
 import { HRule } from './_hrule';
 
@@ -216,19 +216,29 @@ export const browserApp: AppDefinition = {
             text?: string;
             error?: string;
             truncated?: boolean;
+            status?: number;
           };
           // Stale-response guard: Back/re-navigation while this fetch was in
           // flight must not let the old page overwrite the newer one's
           // title/body/status (the address bar would disagree with the page).
           if (history[historyIndex] !== url) return;
-          if (resp.ok && data.text) {
+          // WEB-0040 (#39): `status` is the TARGET site's HTTP status, relayed
+          // by the proxy. On 403/412-style answers the stripped body is the
+          // site's anti-bot challenge page — it must never render as content.
+          const siteFailure = classifySiteStatus(data.status);
+          if (!siteFailure && resp.ok && data.text) {
             pageTitle.setText(data.title || url);
             setBody(data.text);
             const truncated = data.truncated ? ' · truncated' : '';
             status.setText(`${url}  ·  ${data.text.length} chars via proxy${truncated}`);
+          } else if (siteFailure) {
+            // Honest blocked/error page: human copy, status, next step.
+            pageTitle.setText(`${siteFailure.kind === 'site-error' ? 'Error' : 'Blocked'}: ${url}`);
+            setBody(siteFailureCopy(siteFailure));
+            status.setText(`Site returned HTTP ${siteFailure.status}`);
           } else {
-            // Failure branch: either a non-2xx or an empty body. Raw edge
-            // payloads ("error code: 1016") get mapped to human copy.
+            // Proxy's own failure branch: either a non-2xx or an empty body.
+            // Raw edge payloads ("error code: 1016") get mapped to human copy.
             const raw = data.error ?? data.text ?? '';
             pageTitle.setText(`Error: ${url}`);
             setBody(humanizeProxyError(raw) || data.error || `HTTP ${resp.status}`);
