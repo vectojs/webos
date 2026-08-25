@@ -22,7 +22,7 @@ import type { ThemePreset } from '../model/theme-types';
 import { formatTaskbarClock, type ClockReading } from '../model/clock-format';
 import { drawPinstripes, drawRaisedBevel, drawSunkenBevel } from '../chrome/bevels';
 import { scaleHex } from '../chrome/color';
-import { DESKTOP_ICON_SPECS, themedIconSvg, type DesktopIconSpec } from './icons';
+import { DESKTOP_ICON_SPECS, themedIconSvg } from './icons';
 
 /** Apps shown as pinned launcher tiles (subset keeps narrow viewports sane). */
 const PINNED_APPS: readonly string[] = [
@@ -315,7 +315,6 @@ class PinnedTile extends Entity {
   private pressed = false;
 
   constructor(
-    spec: DesktopIconSpec,
     era: string,
     size: number,
     private readonly appId: string,
@@ -359,7 +358,6 @@ class PinnedTile extends Entity {
     });
     this.on('pointercancel', release);
     this.on('click', () => this.onLaunchApp(this.appId));
-    void spec;
   }
 
   public override getA11yAttributes(): A11yAttributes {
@@ -386,10 +384,7 @@ class PinnedTile extends Entity {
 class ClockView extends Entity {
   private reading: ClockReading = { time: '--:--', date: null };
 
-  constructor(
-    private readonly era: string,
-    private readonly fg: string,
-  ) {
+  constructor(private readonly fg: string) {
     super();
     this.interactive = false;
     this.a11yProjection = 'never';
@@ -429,7 +424,6 @@ class ClockView extends Entity {
         `500 12px ${t.chromeFont}`,
         this.fg,
       );
-      void this.era;
     }
   }
 }
@@ -498,12 +492,12 @@ export class WebOSTaskbar extends UIComponent {
       const spec = DESKTOP_ICON_SPECS.find((s) => s.appId === appId);
       if (!spec) continue;
       const size = Math.min(38, this.height - 8);
-      const tile = new PinnedTile(spec, this.presetId, size, appId, spec.label, opts.onLaunch);
+      const tile = new PinnedTile(this.presetId, size, appId, spec.label, opts.onLaunch);
       this.pinnedTiles.push(tile);
       this.add(tile);
     }
 
-    this.clock = new ClockView(this.presetId, this.colors.fg);
+    this.clock = new ClockView(this.colors.fg);
     this.add(this.clock);
 
     for (const glyph of TRAY_GLYPHS) {

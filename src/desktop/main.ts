@@ -380,6 +380,23 @@ function liveTaskbarHeight(): number {
  * whatever instance occupies its public field, so it continues to position
  * ours across resizes.
  */
+/**
+ * Minimal structural surface the engine + shell drive on the public
+ * `shell.taskbar` field: geometry repositioning (`setGeometry`), the Start
+ * hit-test edge, and the bounds read back here. Typing the seam keeps the
+ * WebOSTaskbar assignment compile-checked instead of bypassed through
+ * `unknown` (review F6); the runtime contract is additionally pinned
+ * against installed @vectojs/desktop by webos-taskbar.dist.test.ts.
+ */
+interface TaskbarLike {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  readonly startButtonRight: number;
+  setGeometry(width: number, y: number): void;
+}
+
 function installWebosTaskbar(): void {
   const current = shell.taskbar;
   if (current instanceof WebOSTaskbar) return;
@@ -399,8 +416,9 @@ function installWebosTaskbar(): void {
     width: bounds.width,
     y: bounds.y + bounds.height - h,
   });
-  // Public mutable field — the documented replacement seam.
-  (shell as unknown as { taskbar: unknown }).taskbar = chrome.taskbar;
+  // Public mutable field — the documented replacement seam, cast to the
+  // structural surface above so WebOSTaskbar must satisfy it at compile time.
+  (shell as { taskbar: TaskbarLike | null }).taskbar = chrome.taskbar;
   scene.add(chrome.taskbar);
 }
 

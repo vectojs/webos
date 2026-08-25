@@ -17,8 +17,6 @@ export interface DesktopContextMenuActions {
 export function buildDesktopContextMenuItems(
   actions: DesktopContextMenuActions,
 ): ContextMenuItem[] {
-  const t = appTheme();
-  void t;
   return [
     { label: 'Refresh', onClick: actions.refresh },
     { separator: true },
