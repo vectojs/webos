@@ -397,4 +397,60 @@ describe('boot smoke', () => {
     webos().applyTheme(DEFAULT_PRESET.id);
     shell.windowManager.close(win);
   });
+
+  it('re-opens the top resize rim above every opened window titlebar', () => {
+    const { shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('paint');
+    const handle = (win as unknown as { dragHandle: Entity }).dragHandle;
+    const rim = win.chrome.resizeHandle;
+    const midTitleY = Math.round(win.chrome.titlebarHeight / 2);
+
+    // Mid-titlebar stays owned by the handle → titlebar drag still works.
+    expect(handle.isPointInside(win.x + 60, win.y + midTitleY)).toBe(true);
+    // Top-rim presses fall through to the window root's resize handler.
+    expect(handle.isPointInside(win.x + 60, win.y + rim - 1)).toBe(false);
+    expect(handle.isPointInside(win.x + rim - 1, win.y + rim - 1)).toBe(false);
+
+    // Maximized windows have no rim: the full handle must come back so
+    // restore-under-cursor dragging keeps working.
+    win.maximize();
+    expect(handle.isPointInside(win.x + 60, win.y + rim - 1)).toBe(true);
+    win.restore();
+    expect(handle.isPointInside(win.x + 60, win.y + rim - 1)).toBe(false);
+    shell.windowManager.close(win);
+  });
+
+  it('pulls a restore-under-cursor window back inside the work area on pointerup', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    const area = shell.layout.workArea(shell.layout.primary().id);
+
+    // Simulate the engine's unclamped drop on the drag path: maximize→restore
+    // arms the pending clamp, then the window is placed outside the work area.
+    win.maximize();
+    win.restore();
+    win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
+    document.dispatchEvent(new Event('pointerup'));
+
+    const clamped = {
+      x: win.x,
+      y: win.y,
+      right: win.x + win.width,
+      bottom: win.y + win.height,
+    };
+    expect(clamped.x).toBeGreaterThanOrEqual(area.x);
+    expect(clamped.y).toBeGreaterThanOrEqual(area.y);
+    expect(clamped.right).toBeLessThanOrEqual(area.x + area.width);
+    expect(clamped.bottom).toBeLessThanOrEqual(area.y + area.height);
+
+    // The clamp is one-shot: a later in-bounds pointerup must not move windows.
+    const before = { x: win.x, y: win.y };
+    document.dispatchEvent(new Event('pointerup'));
+    expect(win.x).toBe(before.x);
+    expect(win.y).toBe(before.y);
+    scene.markDirty();
+    shell.windowManager.close(win);
+  });
 });

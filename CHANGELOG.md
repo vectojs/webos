@@ -73,6 +73,24 @@
 
 ### Fixed
 
+- Paint Clear is no longer dead code (#33): the button descriptor lived in
+  the color-swatch list, so the toolbar hit-test matched it first — clicks
+  never cleared strokes and silently set an empty current color. Clear is
+  now hit-tested separately from a palette of colors-only swatches.
+- N/NW/NE window edges resize again (#33): the titlebar drag handle spanned
+  the full titlebar and absorbed presses within the resize-rim band before
+  the window root's resize handler could own them. The handle's hit-test now
+  yields the top rim on resizable windows; maximized windows keep the full
+  handle for restore-dragging.
+- Restoring a maximized window by dragging its titlebar can no longer leave
+  it stranded off-screen (#33): the engine drops the restored box under the
+  cursor unclamped, so the shell re-clamps just-restored windows into the
+  work area once the drag gesture ends. Normal drags keep engine behavior.
+- Files: the inner listing scrolls in a viewport that grows/shrinks with the
+  window client area instead of a fixed 150px strip (floored at 120px so
+  minimum-size windows stay usable).
+- Browser: focusing the address bar selects its text, so typing replaces the
+  URL instead of appending to it.
 - Taskbar clock no longer overlaps entry buttons at narrow viewports
   (#27): the clock is re-pinned to the right edge on every resize, theme
   switch, and window open/close/retitle instead of only when the formatted
