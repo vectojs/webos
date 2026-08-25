@@ -2,8 +2,8 @@
  * Boot — Scene(onDemand) → DesktopShell → icon grid → seed VFS → devtools hook.
  */
 
-import { Scene } from '@vectojs/core';
-import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
+import { Scene } from "@vectojs/core";
+import { DesktopShell, type DesktopWindow } from "@vectojs/desktop";
 import {
   buildConfig,
   DEFAULT_PRESET,
@@ -11,36 +11,37 @@ import {
   persistTheme,
   setActiveThemeId,
   svgDataUrl,
-} from '../config';
-import { peekNextNoteWindowTitle } from '../apps/notes';
-import { appTheme, setAppTheme } from '../model/app-theme';
-import { findPreset, THEME_PRESETS } from '../model/themes';
-import { pushRecent } from '../model/start-menu-model';
-import { StorageVfs } from '../model/storage-vfs';
-import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
-import { clampPosition, fitGeometry } from '../model/window-geometry';
+} from "../config";
+import { peekNextNoteWindowTitle } from "../apps/notes";
+import { appTheme, setAppTheme } from "../model/app-theme";
+import { findPreset, THEME_PRESETS } from "../model/themes";
+import { pushRecent } from "../model/start-menu-model";
+import { StorageVfs } from "../model/storage-vfs";
+import { SEED_DIRS, SEED_DOCS } from "../model/seed-docs";
+import { fitGeometry } from "../model/window-geometry";
 import {
   DesktopClickCatcher,
   DesktopIcon,
   DESKTOP_ICON_SPECS,
   MarqueeSelection,
   setIconPreset,
-} from './icons';
-import { WebOSTaskbar } from './taskbar';
-import { openY2KProgramMenu, WebOSStartMenu } from './start-menu';
-import { showDesktopContextMenu } from './context-menu';
-import { showBootSplash } from './boot-splash';
+} from "./icons";
+import { WebOSTaskbar } from "./taskbar";
+import { openY2KProgramMenu, WebOSStartMenu } from "./start-menu";
+import { showDesktopContextMenu } from "./context-menu";
+import { showBootSplash } from "./boot-splash";
+import { clampWindowsToArea, refitMaximized } from "./window-refit";
 
-const root = document.getElementById('root');
-if (!root) throw new Error('#root missing');
+const root = document.getElementById("root");
+if (!root) throw new Error("#root missing");
 
-const canvas = document.createElement('canvas');
-canvas.setAttribute('aria-label', 'VectoJS WebOS desktop');
-canvas.style.display = 'block';
+const canvas = document.createElement("canvas");
+canvas.setAttribute("aria-label", "VectoJS WebOS desktop");
+canvas.style.display = "block";
 root.appendChild(canvas);
 
 const scene = new Scene(canvas, {
-  renderMode: 'onDemand',
+  renderMode: "onDemand",
   disableWindowResize: true,
 });
 
@@ -50,7 +51,7 @@ let shell: DesktopShell;
 const recentAppIds: string[] = [];
 
 function applyTheme(presetId: string): void {
-  const target = findPreset(presetId) ?? findPreset('aero')!;
+  const target = findPreset(presetId) ?? findPreset("aero")!;
   // Track the RESOLVED preset so the Settings indicator never shows a stale
   // id when a caller passed an unknown one (fallback applies 'aero').
   setActiveThemeId(target.id);
@@ -65,13 +66,13 @@ function applyTheme(presetId: string): void {
     boot.config.desktop.taskbarHeight = appTheme().taskbarHeight;
     shell.layout.setTaskbar(
       appTheme().taskbarHeight,
-      boot.config.desktop.taskbarPosition ?? 'bottom',
+      boot.config.desktop.taskbarPosition ?? "bottom",
     );
   }
   shell.setTheme(
     {
       ...target.tokens,
-      'desktop-wallpaper': target.wallpaperBg,
+      "desktop-wallpaper": target.wallpaperBg,
     },
     target.wallpaperCdnUrl || svgDataUrl(target.wallpaperSvg),
   );
@@ -101,12 +102,12 @@ const baseOpen = shell.open.bind(shell);
 shell.open = (appId, opts) => {
   pushRecent(recentAppIds, appId);
   if (!opts?.title) {
-    if (appId === 'notes') {
+    if (appId === "notes") {
       return baseOpen(appId, { ...opts, title: peekNextNoteWindowTitle() });
     }
     const app = boot.config.apps?.find((a) => a.id === appId);
     const openCount = shell.windowManager.listByApp(appId).length + 1;
-    if (app?.instances === 'multiple' && openCount > 1) {
+    if (app?.instances === "multiple" && openCount > 1) {
       return baseOpen(appId, { ...opts, title: `${app.title} ${openCount}` });
     }
   }
@@ -143,7 +144,8 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
     return;
   }
   if (lastSceneW === newW && lastSceneH === newH) return;
-  const ratioChange = Math.abs(newW / newH - lastSceneW / lastSceneH) / (lastSceneW / lastSceneH);
+  const ratioChange =
+    Math.abs(newW / newH - lastSceneW / lastSceneH) / (lastSceneW / lastSceneH);
   if (ratioChange > 0.02) {
     // Not a zoom — keep windows where they are; just re-anchor.
     lastSceneW = newW;
@@ -164,8 +166,14 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
     const curH = win.height;
     const offX = win.x + curW / 2 - oldCx;
     const offY = win.y + curH / 2 - oldCy;
-    const nextX = Math.max(8, Math.min(newW - curW - 8, Math.round(newCx + offX - curW / 2)));
-    const nextY = Math.max(8, Math.min(maxUsableH - curH - 8, Math.round(newCy + offY - curH / 2)));
+    const nextX = Math.max(
+      8,
+      Math.min(newW - curW - 8, Math.round(newCx + offX - curW / 2)),
+    );
+    const nextY = Math.max(
+      8,
+      Math.min(maxUsableH - curH - 8, Math.round(newCy + offY - curH / 2)),
+    );
     win.setGeometry(nextX, nextY, curW, curH);
   }
 
@@ -179,6 +187,10 @@ function fit(): void {
   const vp = viewportCssSize();
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
+  // Engine gap E1 (issue #30): DesktopShell.resize moves the work area but
+  // leaves maximized windows in their stale pre-shrink box — re-apply
+  // maximize so they track the new work area until the engine refits them.
+  refitMaximized(shell.windowManager.list());
   recenterWindowsPreservingOffset(vp.w, vp.h);
   clampWindowsToWorkArea();
   // fit() runs before the icon grid exists at boot (TDZ guard).
@@ -188,20 +200,25 @@ function fit(): void {
 // One resize path: visualViewport covers browser zoom and window resize;
 // the plain `resize` listener is the fallback for engines without it.
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', fit);
+  window.visualViewport.addEventListener("resize", fit);
 } else {
-  window.addEventListener('resize', fit);
+  window.addEventListener("resize", fit);
 }
 
 // Right-click never opens the browser's "Save image as…" menu on a desktop.
-canvas.addEventListener('contextmenu', (e) => {
+canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   // Desktop context menu on right-click of EMPTY desktop only (spec §4 #7).
   // Windows, the taskbar and icons own their own surfaces; over them we just
   // suppress the browser menu as before.
   const pt = scene.clientToScene(e.clientX, e.clientY);
   for (const win of shell.windowManager.list()) {
-    if (pt.x >= win.x && pt.x <= win.x + win.width && pt.y >= win.y && pt.y <= win.y + win.height) {
+    if (
+      pt.x >= win.x &&
+      pt.x <= win.x + win.width &&
+      pt.y >= win.y &&
+      pt.y <= win.y + win.height
+    ) {
       return;
     }
   }
@@ -222,8 +239,8 @@ canvas.addEventListener('contextmenu', (e) => {
       fit();
       scene.markDirty();
     },
-    openSettings: () => void shell.open('settings'),
-    openAbout: () => void shell.open('about'),
+    openSettings: () => void shell.open("settings"),
+    openAbout: () => void shell.open("about"),
   });
 });
 
@@ -232,10 +249,10 @@ canvas.addEventListener('contextmenu', (e) => {
  * targets (the Notes TextArea shadow input) keep full native editing keys.
  */
 // Browser-native bindings a desktop owns: Save/Print/Open/Reload/Bookmark.
-const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'r', 'g', 'd']);
+const BROWSER_SHORTCUT_KEYS = new Set(["s", "p", "o", "r", "g", "d"]);
 
 /** Snap/tiling gestures — Ctrl+Alt+Arrow snaps the focused window, Ctrl+Alt+G tiles. */
-const SNAP_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+const SNAP_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 
 function focusedWindow(): DesktopWindow | null {
   return shell.windowManager.list().find((w) => w.focused) ?? null;
@@ -246,33 +263,28 @@ function workArea(): { x: number; y: number; width: number; height: number } {
 }
 
 /**
- * Pull any window whose box escapes the work area back inside — without
- * re-positioning windows that are already inside (audit #25 P2-B). Runs on
- * every viewport resize: the aspect-changing path skips re-centering by
- * design (measured +349,+129 shift), so clamping is the only correction a
- * narrow viewport gets.
+ * Pull any window whose box escapes the work area back inside — shrinking
+ * oversize boxes to the area, then pinning the top-left (issue #30: the old
+ * position-only clamp left windows taller/wider than a shrunken work area
+ * stranded past the bottom/right forever). Without re-positioning windows
+ * that are already inside (audit #25 P2-B). Runs on every viewport resize:
+ * the aspect-changing path skips re-centering by design (measured +349,+129
+ * shift), so clamping is the only correction a narrow viewport gets.
  */
 function clampWindowsToWorkArea(): void {
-  const area = workArea();
-  for (const win of shell.windowManager.list()) {
-    if (win.maximized || win.minimized) continue;
-    const pos = clampPosition(win.x, win.y, win.width, win.height, area);
-    if (pos.x !== win.x || pos.y !== win.y) {
-      win.setGeometry(pos.x, pos.y, win.width, win.height);
-    }
-  }
+  clampWindowsToArea(shell.windowManager.list(), workArea());
 }
 
-function snapFocused(dir: 'left' | 'right' | 'top' | 'bottom'): void {
+function snapFocused(dir: "left" | "right" | "top" | "bottom"): void {
   const win = focusedWindow();
   if (!win) return;
   const area = workArea();
   const halfW = Math.floor(area.width / 2);
   const halfH = Math.floor(area.height / 2);
-  if (dir === 'left') win.setGeometry(area.x, area.y, halfW, area.height);
-  else if (dir === 'right')
+  if (dir === "left") win.setGeometry(area.x, area.y, halfW, area.height);
+  else if (dir === "right")
     win.setGeometry(area.x + area.width - halfW, area.y, halfW, area.height);
-  else if (dir === 'top') win.setGeometry(area.x, area.y, area.width, halfH);
+  else if (dir === "top") win.setGeometry(area.x, area.y, area.width, halfH);
   else win.setGeometry(area.x, area.y + area.height - halfH, area.width, halfH);
   scene.markDirty();
 }
@@ -294,22 +306,28 @@ function tileWindows(): void {
   scene.markDirty();
 }
 
-document.addEventListener('keydown', (e) => {
+document.addEventListener("keydown", (e) => {
   const target = e.target as HTMLElement | null;
   const editable =
     !!target &&
-    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable);
 
   // Browser-native chords a desktop owns are swallowed BEFORE the editable
   // bail-out (review PX-0079): none of s/p/o/r/g/d is a text-editing key, so
   // gating them on focus bought nothing — it only leaked Ctrl+P through to
   // the native print dialog when typing in Notes/Terminal.
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
+  if (
+    (e.ctrlKey || e.metaKey) &&
+    !e.shiftKey &&
+    BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())
+  ) {
     e.preventDefault();
   }
 
   if (editable) return;
-  if (e.key === 'F5' || e.key === 'F12') {
+  if (e.key === "F5" || e.key === "F12") {
     e.preventDefault();
     return;
   }
@@ -318,11 +336,13 @@ document.addEventListener('keydown', (e) => {
   // Snap/tiling gestures (Ctrl+Alt — disjoint from the browser shortcuts above).
   if (e.ctrlKey && e.altKey) {
     if (SNAP_KEYS.has(e.key)) {
-      snapFocused(e.key.slice(5).toLowerCase() as 'left' | 'right' | 'top' | 'bottom');
+      snapFocused(
+        e.key.slice(5).toLowerCase() as "left" | "right" | "top" | "bottom",
+      );
       e.preventDefault();
       return;
     }
-    if (e.key.toLowerCase() === 'g') {
+    if (e.key.toLowerCase() === "g") {
       tileWindows();
       e.preventDefault();
       return;
@@ -361,7 +381,9 @@ const catcher = new DesktopClickCatcher(
   (x, y) => {
     const tb = chrome.taskbar ?? shell.taskbar;
     if (!tb) return false;
-    return x >= tb.x && x <= tb.x + tb.width && y >= tb.y && y <= tb.y + tb.height;
+    return (
+      x >= tb.x && x <= tb.x + tb.width && y >= tb.y && y <= tb.y + tb.height
+    );
   },
 );
 // The catcher is the empty-desktop pointer surface, so its a11y mirror must be
@@ -468,7 +490,8 @@ function closeStartMenu(): void {
 function openStartMenu(): void {
   if (startMenu || y2kMenu) return;
   const active = document.activeElement;
-  openerFocus = active instanceof HTMLElement && active !== document.body ? active : null;
+  openerFocus =
+    active instanceof HTMLElement && active !== document.body ? active : null;
   const preset = findPreset(getActiveThemeId()) ?? DEFAULT_PRESET;
   const apps = THEME_PRESETS.length > 0 ? (boot.config.apps ?? []) : [];
   const launch = (appId: string): void => {
@@ -476,9 +499,15 @@ function openStartMenu(): void {
     void shell.open(appId);
   };
   const tbH = appTheme().taskbarHeight;
-  if (preset.id === 'y2k') {
+  if (preset.id === "y2k") {
     // Era-correct: cascading program groups instead of a searchable panel.
-    y2kMenu = openY2KProgramMenu(scene, apps, 8, scene.height - tbH - 8, launch);
+    y2kMenu = openY2KProgramMenu(
+      scene,
+      apps,
+      8,
+      scene.height - tbH - 8,
+      launch,
+    );
     scene.markDirty();
     return;
   }
@@ -503,21 +532,27 @@ function toggleStartMenu(): void {
 }
 shell.toggleStartMenu = toggleStartMenu;
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && (startMenu || y2kMenu)) {
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && (startMenu || y2kMenu)) {
     e.preventDefault();
     closeStartMenu();
   }
 });
 document.addEventListener(
-  'pointerdown',
+  "pointerdown",
   (e) => {
     if (!startMenu && !y2kMenu) return;
     const pt = scene.clientToScene(e.clientX, e.clientY);
     if (startMenu?.containsPoint(pt.x, pt.y)) return;
     // Clicks on the Start tile toggle via the tile's own handler.
     const tb = shell.taskbar;
-    if (tb && pt.x >= tb.x && pt.x <= tb.x + tb.startButtonRight && pt.y >= tb.y - 2) return;
+    if (
+      tb &&
+      pt.x >= tb.x &&
+      pt.x <= tb.x + tb.startButtonRight &&
+      pt.y >= tb.y - 2
+    )
+      return;
     closeStartMenu();
   },
   true,
@@ -526,12 +561,22 @@ document.addEventListener(
 installWebosTaskbar();
 
 fit();
+// Maximize/restore/minimize/un-minimize emit "state": engine gap E2 (issue
+// #30) makes restore() replay the stale pre-maximize box unclamped, so
+// "state" events re-run the shrink clamp — a no-op for in-bounds boxes.
+// Only "state": open is engine-clamped at open time and focus/close must
+// never yank a deliberately parked window (drag permits parking mostly
+// off-screen with just the titlebar + 48px visible — PX-0159). Taskbar
+// entries reflow via the bar's own wm subscription.
+shell.windowManager.on((e) => {
+  if (e.type === "state") clampWindowsToWorkArea();
+});
 scene.start();
 // Era splash over the first paint (spec §4 #8): non-interactive, audit-safe.
 // ?nosplash skips the ~1.12s mark+fade for tests/benchmarks (query-param
 // convention shared with ?debug); per-era splash art stays deferred
 // (carryctx DEC-0022, webos-docs TODO).
-if (!new URLSearchParams(location.search).has('nosplash')) {
+if (!new URLSearchParams(location.search).has("nosplash")) {
   void showBootSplash(scene);
 }
 
@@ -551,7 +596,10 @@ const maxItemsPerCol = 6;
 function layoutIcons(): void {
   const taskbarH = liveTaskbarHeight();
   const usableH = Math.max(120, scene.height - taskbarH - 16);
-  const perCol = Math.max(1, Math.min(maxItemsPerCol, Math.floor((usableH - startY) / rowGap)));
+  const perCol = Math.max(
+    1,
+    Math.min(maxItemsPerCol, Math.floor((usableH - startY) / rowGap)),
+  );
   desktopIcons.forEach((icon, index) => {
     const row = index % perCol;
     const col = Math.floor(index / perCol);
@@ -593,14 +641,15 @@ void (async () => {
     if (vfs instanceof StorageVfs) restoredAny = await vfs.restored;
     for (const dir of SEED_DIRS) await vfs.mkdir(dir);
     if (!restoredAny) {
-      for (const [path, content] of Object.entries(SEED_DOCS)) await vfs.write(path, content);
+      for (const [path, content] of Object.entries(SEED_DOCS))
+        await vfs.write(path, content);
     }
   }
 
   // Boot spawns shrink to fit narrow viewports instead of overflowing them
   // (audit #25 P2-B): preferred geometry first, fitted to the live scene.
   const tbH = liveTaskbarHeight();
-  const termWin: DesktopWindow | null = shell.open('terminal');
+  const termWin: DesktopWindow | null = shell.open("terminal");
   if (termWin) {
     const g = fitGeometry(
       { x: 200, y: 36, width: 540, height: 380 },
@@ -610,7 +659,7 @@ void (async () => {
     );
     termWin.setGeometry(g.x, g.y, g.width, g.height);
   }
-  const filesWin: DesktopWindow | null = shell.open('files');
+  const filesWin: DesktopWindow | null = shell.open("files");
   if (filesWin) {
     const g = fitGeometry(
       { x: 560, y: 80, width: 520, height: 470 },
@@ -635,12 +684,12 @@ async function toggleDevtools(): Promise<void> {
   }
   // Dynamic import: the production bundle carries no devtools code unless
   // the user asks for it.
-  const { attachDevtools } = await import('@vectojs/devtools');
+  const { attachDevtools } = await import("@vectojs/devtools");
   devtoolsInstance = attachDevtools(scene, {
     width: 340,
     refreshInterval: 500,
     showPerf: true,
-    defaultTab: 'tree',
+    defaultTab: "tree",
   });
 }
 
@@ -652,7 +701,7 @@ const webosApi = {
   applyTheme,
   toggleDevtools,
   audit: async () => {
-    const { auditScene } = await import('@vectojs/devtools/headless');
+    const { auditScene } = await import("@vectojs/devtools/headless");
     return auditScene(scene, { includeOverlay: true });
   },
 };
@@ -665,6 +714,6 @@ const webosApi = {
   audit: webosApi.audit,
 };
 
-if (new URLSearchParams(location.search).has('debug')) {
+if (new URLSearchParams(location.search).has("debug")) {
   void toggleDevtools();
 }

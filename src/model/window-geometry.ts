@@ -19,6 +19,13 @@ export interface Position {
   y: number;
 }
 
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Clamp a window's top-left so its box lies inside `area`.
  * Windows larger than the area pin to the area origin (left/top) rather than
@@ -31,6 +38,37 @@ export function clampPosition(x: number, y: number, w: number, h: number, area: 
     x: Math.min(Math.max(x, area.x), maxX),
     y: Math.min(Math.max(y, area.y), maxY),
   };
+}
+
+/**
+ * Shrink-and-pin clamp mirroring the engine's DisplayLayout.clampRect
+ * (@vectojs/desktop 0.7.0): reduce the box into `area` FIRST, then pull the
+ * top-left inside. A position-only clamp leaves a window wider/taller than
+ * the area stranded past the bottom/right edge forever (issue #30: 4/5
+ * windows outside after zoom-in to a 568×315 work area), so re-clamping must
+ * shrink.
+ *
+ * `minWidth`/`minHeight` model the engine's per-window floors (Window
+ * minWidth()/minHeight() are private in 0.7.0 typings — callers who know
+ * their floor pass it; when the area is smaller than the floor the box
+ * cannot fully fit and stays pinned at the area origin so the unavoidable
+ * overflow runs off the bottom/right edges only). The engine's applyGeom
+ * re-floors size AFTER any setGeometry keeping the pinned top-left, which is
+ * exactly this function's output shape.
+ */
+export function clampRect(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  area: Area,
+  minWidth = 1,
+  minHeight = 1,
+): Rect {
+  const width = Math.min(Math.max(w, minWidth), Math.max(minWidth, area.width));
+  const height = Math.min(Math.max(h, minHeight), Math.max(minHeight, area.height));
+  const pos = clampPosition(x, y, width, height, area);
+  return { x: pos.x, y: pos.y, width, height };
 }
 
 /**

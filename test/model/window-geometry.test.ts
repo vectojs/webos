@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { clampPosition, fitGeometry } from '../../src/model/window-geometry';
+import { clampPosition, clampRect, fitGeometry } from '../../src/model/window-geometry';
 
 const AREA = { x: 0, y: 0, width: 800, height: 600 };
 
@@ -34,6 +34,61 @@ describe('clampPosition', () => {
 
   it('pins oversized windows to the area origin instead of going negative', () => {
     expect(clampPosition(120, 80, 900, 700, AREA)).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('clampRect', () => {
+  it('leaves fitting windows untouched', () => {
+    expect(clampRect(100, 50, 200, 150, AREA)).toEqual({
+      x: 100,
+      y: 50,
+      width: 200,
+      height: 150,
+    });
+  });
+
+  it('shrinks an oversize box into the area, then pins the top-left (issue #30)', () => {
+    // Audited shape: zoom-in to a 568×355 viewport (568×315 work area) — the
+    // position-only clamp left this window stranded with height 380 > 315.
+    const area = { x: 0, y: 40, width: 568, height: 315 };
+    expect(clampRect(72, 8, 540, 380, area)).toEqual({
+      x: 28,
+      y: 40,
+      width: 540,
+      height: 315,
+    });
+  });
+
+  it('pulls the position back after shrinking when the box hangs off right/bottom', () => {
+    const area = { x: 0, y: 40, width: 568, height: 315 };
+    expect(clampRect(560, 80, 520, 470, area)).toEqual({
+      x: 48,
+      y: 40,
+      width: 520,
+      height: 315,
+    });
+  });
+
+  it('keeps the engine floor semantics: size never drops below minWidth/minHeight', () => {
+    // Work area smaller than the window's enforced minimum size — shrink is
+    // capped at the floor and the box stays pinned at the area origin so the
+    // unavoidable overflow runs off the bottom/right edges only.
+    const tiny = { x: 0, y: 0, width: 300, height: 200 };
+    expect(clampRect(120, 80, 400, 300, tiny, 360, 240)).toEqual({
+      x: 0,
+      y: 0,
+      width: 360,
+      height: 240,
+    });
+  });
+
+  it('defaults floors to 1 like the engine clampRect', () => {
+    expect(clampRect(-50, -50, 0, 0, AREA)).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
   });
 });
 
