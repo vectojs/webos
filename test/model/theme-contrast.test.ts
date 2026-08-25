@@ -27,11 +27,11 @@ function tokensFor(preset: ThemePreset): AppThemeTokens {
   return appTheme();
 }
 
-/** Measured worst-case ratios across all 7 presets (2026-08, base 31006e2). */
+/** Measured worst-case ratios across all 7 presets (2026-08-25, WEB-0034 era matrices, base dfebbe7). */
 const WORST = {
-  textOnSurface: 6.61, // dreamcore
-  accentLabelOnAccent: 5.07, // aero
-  focusOnSurface: 3.68, // aqua
+  textOnSurface: 5.87, // dreamcore
+  accentLabelOnAccent: 4.66, // cloud
+  focusOnSurface: 3.55, // dreamcore
 } as const;
 
 describe('theme token contrast contract', () => {

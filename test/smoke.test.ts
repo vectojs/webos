@@ -34,7 +34,7 @@ function descendants(root: Entity): Entity[] {
   const result: Entity[] = [];
   const visit = (entity: Entity): void => {
     result.push(entity);
-    for (const child of entity.children) visit(child);
+    for (const child of entity.children ?? []) visit(child);
   };
   visit(root);
   return result;
@@ -44,6 +44,9 @@ beforeAll(async () => {
   const rootDiv = document.createElement('div');
   rootDiv.id = 'root';
   document.body.appendChild(rootDiv);
+  // Skip the boot splash (query-param escape hatch, review F4): the suite
+  // must not carry the 900ms mark + 220ms fade on every run.
+  window.location.search = '?nosplash';
   await import('../src/desktop/main');
   // Let the async seed + initial window open settle, then drive frames.
   await new Promise((r) => setTimeout(r, 50));
@@ -61,6 +64,12 @@ describe('boot smoke', () => {
     expect(scene.width).toBeGreaterThan(0);
     expect(shell.taskbar).not.toBeNull();
     expect(shell.windowManager.list().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('?nosplash boots without the splash overlay mounted', () => {
+    const { scene } = api();
+    const names = descendants(scene).map((e) => e.constructor.name);
+    expect(names).not.toContain('Splash');
   });
 
   it('auditScene is clean modulo documented intentional stacking', async () => {
@@ -180,8 +189,10 @@ describe('boot smoke', () => {
   function parkFocusOnTaskbarButton(scene: Scene, shell: DesktopShell): HTMLElement {
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
     ensureStartMenuClosed(scene);
+    // WEB-0034: the bar is WebOS-owned; entries are entity-drawn buttons, so
+    // park focus on the first projected `role="button"` mirror (Start tile).
     const startButton = descendants(shell.taskbar!).find(
-      (entity): entity is Button => entity instanceof Button,
+      (entity) => entity.getA11yAttributes().role === 'button',
     );
     if (!startButton) throw new Error('Missing taskbar button');
     const mirror = document.getElementById(startButton.id);
@@ -330,5 +341,60 @@ describe('boot smoke', () => {
     // Restore so later suites boot-state assumptions stay stable.
     webos().applyTheme(DEFAULT_PRESET.id);
     for (const other of [...shell.windowManager.list()]) shell.windowManager.close(other);
+  });
+
+  /**
+   * PX-0163 regression: an era switch changes the painted bar height
+   * (config.desktop.taskbarHeight drives remount/placement) but the engine's
+   * work area only follows DisplayLayout.setTaskbar. Both must move together,
+   * or windows clamp against a stale floor and overlap the new bar.
+   */
+  it('syncs the engine work area with the era bar height on theme switch', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const area = (): { x: number; y: number; width: number; height: number } =>
+      shell.layout.workArea(shell.layout.primary().id);
+
+    webos().applyTheme('aero'); // 48px bar — same as the happy-dom boot era
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(appTheme().taskbarHeight).toBe(48);
+    expect(area().height).toBe(scene.height - 48);
+    expect(area().y).toBe(0); // bottom-docked
+    // Painted bar and engine usable area agree.
+    expect(shell.taskbar?.height).toBe(48);
+    expect(shell.taskbar?.y).toBe(scene.height - 48);
+
+    webos().applyTheme('aqua'); // 60px bar
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(appTheme().taskbarHeight).toBe(60);
+    expect(area().height).toBe(scene.height - 60);
+    expect(shell.taskbar?.height).toBe(60);
+    expect(shell.taskbar?.y).toBe(scene.height - 60);
+
+    // Restore so later suites boot-state assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    for (const other of [...shell.windowManager.list()]) shell.windowManager.close(other);
+  });
+
+  it('re-clamps windows that a taller era bar would overlap', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+
+    webos().applyTheme('y2k'); // 30px bar — shortest era
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    const win = shell.open('calculator');
+    const height = 280;
+    // Legal under y2k: the bottom edge rests exactly on the old work-area floor.
+    win.setGeometry(scene.width - 250, scene.height - 30 - height, 240, height);
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(win.y + win.height).toBe(scene.height - 30);
+
+    webos().applyTheme('aqua'); // 60px bar — the parked window now overlaps it
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(win.y + win.height).toBeLessThanOrEqual(scene.height - 60);
+
+    // Restore so later suites boot-state assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    shell.windowManager.close(win);
   });
 });

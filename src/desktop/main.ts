@@ -4,16 +4,32 @@
 
 import { Scene } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
-import { buildConfig, persistTheme, setActiveThemeId, svgDataUrl } from '../config';
+import {
+  buildConfig,
+  DEFAULT_PRESET,
+  getActiveThemeId,
+  persistTheme,
+  setActiveThemeId,
+  svgDataUrl,
+} from '../config';
 import { peekNextNoteWindowTitle } from '../apps/notes';
-import { setAppTheme } from '../model/app-theme';
-import { findPreset } from '../model/themes';
+import { appTheme, setAppTheme } from '../model/app-theme';
+import { findPreset, THEME_PRESETS } from '../model/themes';
+import { pushRecent } from '../model/start-menu-model';
 import { StorageVfs } from '../model/storage-vfs';
 import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
 import { clampPosition, fitGeometry } from '../model/window-geometry';
-import { DesktopClickCatcher, DesktopIcon, DESKTOP_ICON_SPECS, MarqueeSelection } from './icons';
-import { installStartMenuKeyboard } from './start-menu-keys';
-import { applyTaskbarGuard } from './taskbar-guard';
+import {
+  DesktopClickCatcher,
+  DesktopIcon,
+  DESKTOP_ICON_SPECS,
+  MarqueeSelection,
+  setIconPreset,
+} from './icons';
+import { WebOSTaskbar } from './taskbar';
+import { openY2KProgramMenu, WebOSStartMenu } from './start-menu';
+import { showDesktopContextMenu } from './context-menu';
+import { showBootSplash } from './boot-splash';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
@@ -30,12 +46,28 @@ const scene = new Scene(canvas, {
 
 let shell: DesktopShell;
 
+/** Recently launched app ids (start menu "Recent" section), newest first. */
+const recentAppIds: string[] = [];
+
 function applyTheme(presetId: string): void {
   const target = findPreset(presetId) ?? findPreset('aero')!;
   // Track the RESOLVED preset so the Settings indicator never shows a stale
   // id when a caller passed an unknown one (fallback applies 'aero').
   setActiveThemeId(target.id);
   setAppTheme(target);
+  setIconPreset(target.id);
+  // Keep the engine's placement math in sync with the era bar height BEFORE
+  // setTheme — it remounts the taskbar from config.desktop.taskbarHeight,
+  // while window clamping reads layout.workArea(), which only follows
+  // DisplayLayout.setTaskbar (review PX-0163: the engine keeps two sources of
+  // truth for the bar height, so an era switch must update both).
+  if (boot.config.desktop) {
+    boot.config.desktop.taskbarHeight = appTheme().taskbarHeight;
+    shell.layout.setTaskbar(
+      appTheme().taskbarHeight,
+      boot.config.desktop.taskbarPosition ?? 'bottom',
+    );
+  }
   shell.setTheme(
     {
       ...target.tokens,
@@ -43,10 +75,14 @@ function applyTheme(presetId: string): void {
     },
     target.wallpaperCdnUrl || svgDataUrl(target.wallpaperSvg),
   );
+  // setTheme() remounted the ENGINE taskbar; swap in the WebOS-owned one
+  // (composition friction recorded upstream; fails safe if absent).
+  installWebosTaskbar();
+  closeStartMenu();
+  // The new era's work area may be shorter (taller bar): pull windows parked
+  // near the old bottom edge back inside before the next resize does (PX-0163).
+  clampWindowsToWorkArea();
   persistTheme(target.id);
-  // setTheme destroys and remounts the taskbar (engine behavior), dropping any
-  // clip/pin state — re-apply the guard to the fresh bar (#27).
-  guardTaskbar();
   scene.markDirty();
 }
 
@@ -63,6 +99,7 @@ shell = new DesktopShell({ scene, config: boot.config });
  */
 const baseOpen = shell.open.bind(shell);
 shell.open = (appId, opts) => {
+  pushRecent(recentAppIds, appId);
   if (!opts?.title) {
     if (appId === 'notes') {
       return baseOpen(appId, { ...opts, title: peekNextNoteWindowTitle() });
@@ -118,7 +155,7 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
   const oldCy = lastSceneH / 2;
   const newCx = newW / 2;
   const newCy = newH / 2;
-  const taskbarH = shell.taskbar ? shell.taskbar.height : 40;
+  const taskbarH = liveTaskbarHeight();
   const maxUsableH = Math.max(120, newH - taskbarH);
 
   for (const win of shell.windowManager.list()) {
@@ -138,22 +175,10 @@ function recenterWindowsPreservingOffset(newW: number, newH: number): void {
 
 let iconsReady = false;
 
-/**
- * Taskbar guard (#27): the engine's clock only moves when the formatted minute
- * string changes, so the boot-time placement (made at default canvas width)
- * and any same-minute resize leave it stale — into the entries region. Pin it
- * and clip the entries host on every fit; the window-manager subscription
- * below covers runtime content changes without a viewport event.
- */
-function guardTaskbar(): void {
-  if (shell.taskbar) applyTaskbarGuard(shell.taskbar);
-}
-
 function fit(): void {
   const vp = viewportCssSize();
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
-  guardTaskbar();
   recenterWindowsPreservingOffset(vp.w, vp.h);
   clampWindowsToWorkArea();
   // fit() runs before the icon grid exists at boot (TDZ guard).
@@ -169,7 +194,38 @@ if (window.visualViewport) {
 }
 
 // Right-click never opens the browser's "Save image as…" menu on a desktop.
-canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  // Desktop context menu on right-click of EMPTY desktop only (spec §4 #7).
+  // Windows, the taskbar and icons own their own surfaces; over them we just
+  // suppress the browser menu as before.
+  const pt = scene.clientToScene(e.clientX, e.clientY);
+  for (const win of shell.windowManager.list()) {
+    if (pt.x >= win.x && pt.x <= win.x + win.width && pt.y >= win.y && pt.y <= win.y + win.height) {
+      return;
+    }
+  }
+  const tb = chrome.taskbar ?? shell.taskbar;
+  if (tb && pt.x >= tb.x && pt.x <= tb.x + tb.width && pt.y >= tb.y) return;
+  for (const icon of desktopIcons) {
+    if (
+      pt.x >= icon.x &&
+      pt.x <= icon.x + icon.width &&
+      pt.y >= icon.y &&
+      pt.y <= icon.y + icon.height
+    ) {
+      return;
+    }
+  }
+  showDesktopContextMenu(scene, pt.x, pt.y, {
+    refresh: () => {
+      fit();
+      scene.markDirty();
+    },
+    openSettings: () => void shell.open('settings'),
+    openAbout: () => void shell.open('about'),
+  });
+});
 
 /**
  * Swallow browser-native shortcuts that a desktop would own. Editable
@@ -303,7 +359,7 @@ const catcher = new DesktopClickCatcher(
     scene.markDirty();
   },
   (x, y) => {
-    const tb = shell.taskbar;
+    const tb = chrome.taskbar ?? shell.taskbar;
     if (!tb) return false;
     return x >= tb.x && x <= tb.x + tb.width && y >= tb.y && y <= tb.y + tb.height;
   },
@@ -320,14 +376,164 @@ scene.add(catcher);
 // Order: catcher → shell → size → rAF → icons → marquee → initial windows
 shell.start();
 
-// Start menu: focus the first item on open + arrow-key roving (audit #25 P2-C).
-installStartMenuKeyboard(shell);
+// ----------------------------------------------------- WebOS-owned chrome
+
+/** Typed handle for the WebOS-owned bar (engine field is engine-typed). */
+const chrome = { taskbar: null as WebOSTaskbar | null };
+
+function liveTaskbarHeight(): number {
+  return chrome.taskbar?.height ?? (shell.taskbar ? shell.taskbar.height : 40);
+}
+
+/**
+ * Replace the engine Taskbar with the WebOS-owned bar (spec §4 gap #3).
+ * `setTheme()` remounts the engine bar internally, so applyTheme calls this
+ * after every switch. The engine keeps calling `taskbar.setGeometry` on
+ * whatever instance occupies its public field, so it continues to position
+ * ours across resizes.
+ */
+/**
+ * Minimal structural surface the engine + shell drive on the public
+ * `shell.taskbar` field: geometry repositioning (`setGeometry`), the Start
+ * hit-test edge, and the bounds read back here. Typing the seam keeps the
+ * WebOSTaskbar assignment compile-checked instead of bypassed through
+ * `unknown` (review F6); the runtime contract is additionally pinned
+ * against installed @vectojs/desktop by webos-taskbar.dist.test.ts.
+ */
+interface TaskbarLike {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  readonly startButtonRight: number;
+  setGeometry(width: number, y: number): void;
+}
+
+function installWebosTaskbar(): void {
+  const current = shell.taskbar;
+  if (current instanceof WebOSTaskbar) return;
+  if (current) {
+    scene.remove(current);
+    current.destroy();
+    shell.taskbar = null;
+  }
+  const preset = findPreset(getActiveThemeId()) ?? DEFAULT_PRESET;
+  const h = appTheme().taskbarHeight;
+  const bounds = shell.layout.bounds();
+  chrome.taskbar = new WebOSTaskbar({
+    windowManager: shell.windowManager,
+    preset,
+    onStartMenu: () => toggleStartMenu(),
+    onLaunch: (appId) => void shell.open(appId),
+    width: bounds.width,
+    y: bounds.y + bounds.height - h,
+  });
+  // Public mutable field — the documented replacement seam, cast to the
+  // structural surface above so WebOSTaskbar must satisfy it at compile time.
+  (shell as { taskbar: TaskbarLike | null }).taskbar = chrome.taskbar;
+  scene.add(chrome.taskbar);
+}
+
+// Start menu state. The engine's `startMenu` field is private, so the public
+// `toggleStartMenu` is overridden to run the WebOS menu instead; Escape and
+// outside-click dismissal are reimplemented here for the same reason.
+let startMenu: WebOSStartMenu | null = null;
+let y2kMenu: { hide(): void; destroy(): void } | null = null;
+/** Opener focus, restored on close when nothing else took it (PX-0077). */
+let openerFocus: HTMLElement | null = null;
+
+function closeStartMenu(): void {
+  const hadMenu = !!(startMenu || y2kMenu);
+  if (startMenu) {
+    scene.releaseA11yProjection(startMenu);
+    scene.hideOverlay(startMenu);
+    startMenu.destroy();
+    startMenu = null;
+  }
+  if (y2kMenu) {
+    y2kMenu.hide();
+    y2kMenu.destroy();
+    y2kMenu = null;
+  }
+  // Preserve the engine's focus-restoration contract: dismissal must not
+  // leave DOM focus stranded on body.
+  if (hadMenu && openerFocus) {
+    const active = document.activeElement;
+    if (!active || active === document.body) openerFocus.focus?.();
+    openerFocus = null;
+  }
+  scene.markDirty();
+}
+
+function openStartMenu(): void {
+  if (startMenu || y2kMenu) return;
+  const active = document.activeElement;
+  openerFocus = active instanceof HTMLElement && active !== document.body ? active : null;
+  const preset = findPreset(getActiveThemeId()) ?? DEFAULT_PRESET;
+  const apps = THEME_PRESETS.length > 0 ? (boot.config.apps ?? []) : [];
+  const launch = (appId: string): void => {
+    closeStartMenu();
+    void shell.open(appId);
+  };
+  const tbH = appTheme().taskbarHeight;
+  if (preset.id === 'y2k') {
+    // Era-correct: cascading program groups instead of a searchable panel.
+    y2kMenu = openY2KProgramMenu(scene, apps, 8, scene.height - tbH - 8, launch);
+    scene.markDirty();
+    return;
+  }
+  const menu = new WebOSStartMenu({
+    apps,
+    presetId: preset.id,
+    recents: recentAppIds,
+    onLaunch: launch,
+    onClose: closeStartMenu,
+  });
+  menu.x = 8;
+  menu.y = scene.height - tbH - menu.height - 6;
+  startMenu = menu;
+  scene.showOverlay(menu);
+  scene.requestA11yProjection(menu);
+  scene.markDirty();
+}
+
+function toggleStartMenu(): void {
+  if (startMenu || y2kMenu) closeStartMenu();
+  else openStartMenu();
+}
+shell.toggleStartMenu = toggleStartMenu;
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && (startMenu || y2kMenu)) {
+    e.preventDefault();
+    closeStartMenu();
+  }
+});
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (!startMenu && !y2kMenu) return;
+    const pt = scene.clientToScene(e.clientX, e.clientY);
+    if (startMenu?.containsPoint(pt.x, pt.y)) return;
+    // Clicks on the Start tile toggle via the tile's own handler.
+    const tb = shell.taskbar;
+    if (tb && pt.x >= tb.x && pt.x <= tb.x + tb.startButtonRight && pt.y >= tb.y - 2) return;
+    closeStartMenu();
+  },
+  true,
+);
+
+installWebosTaskbar();
 
 fit();
-// Window open/close/retitle reflow taskbar entries with no viewport event;
-// ride the same window-manager stream the engine's rebuild() uses (#27).
-shell.windowManager.on(() => guardTaskbar());
 scene.start();
+// Era splash over the first paint (spec §4 #8): non-interactive, audit-safe.
+// ?nosplash skips the ~1.12s mark+fade for tests/benchmarks (query-param
+// convention shared with ?debug); per-era splash art stays deferred
+// (carryctx DEC-0022, webos-docs TODO).
+if (!new URLSearchParams(location.search).has('nosplash')) {
+  void showBootSplash(scene);
+}
 
 const startX = 14;
 const startY = 14;
@@ -343,7 +549,7 @@ const maxItemsPerCol = 6;
  * push the tail of a fixed 6-per-column list into the taskbar).
  */
 function layoutIcons(): void {
-  const taskbarH = shell.taskbar ? shell.taskbar.height : 40;
+  const taskbarH = liveTaskbarHeight();
   const usableH = Math.max(120, scene.height - taskbarH - 16);
   const perCol = Math.max(1, Math.min(maxItemsPerCol, Math.floor((usableH - startY) / rowGap)));
   desktopIcons.forEach((icon, index) => {
@@ -393,7 +599,7 @@ void (async () => {
 
   // Boot spawns shrink to fit narrow viewports instead of overflowing them
   // (audit #25 P2-B): preferred geometry first, fitted to the live scene.
-  const tbH = shell.taskbar ? shell.taskbar.height : 40;
+  const tbH = liveTaskbarHeight();
   const termWin: DesktopWindow | null = shell.open('terminal');
   if (termWin) {
     const g = fitGeometry(

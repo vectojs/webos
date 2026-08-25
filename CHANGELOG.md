@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Added (WEB-0034, webos#28 — theme identity & desktop-OS feel)
+
+- Era-faithful token matrices for all 7 presets (spec §3.2) plus app-side
+  era chrome tokens: menu set, tray well, caption shape, chrome font,
+  per-era taskbar height, window shadow/glow/pinstripe/bevel composites
+- WebOS-owned taskbar (Start tile, pinned launchers, running entries with
+  per-era indicator, tray cluster, two-line clock)
+- Searchable start menu (search field, 6-column pinned grid, recents,
+  footer); y2k era gets cascading program groups instead
+- Desktop right-click context menu; 900ms boot splash, skippable with
+  `?nosplash` (same query-param convention as `?debug`) for tests and
+  benchmarks
+- Per-era icon treatments with live re-skin on theme switch — including the
+  Material-era drop shadow, which now actually renders from a filter on the
+  icon's painted group
+- Refreshed wallpaper art for all 7 eras (inline SVG + CDN, byte-identical)
+
+### Changed
+
+- aero is now the Modern Fluent default and aqua the Classic Aqua era
+  (category labels fixed)
+- Spec-proposed token values adjusted where needed to keep the WEB-0023
+  contrast contract green (16 values across all 7 presets); each deviation
+  from spec §3.2 fails its floor at the proposed value — see the preset
+  files and carryctx DEC-0017/0018.
+
+### Fixed
+
+- Vaporwave title glow overdraws and hex-colored fake-elevation shadow
+  layers render with real alpha falloff instead of full opacity: hex color
+  tokens now run through shared chrome color math (`src/chrome/color.ts`).
+
 ### Added
 
 - Desktop icons launch from the keyboard: Enter/Space activates the focused
@@ -33,6 +65,11 @@
 ### Removed
 
 - Ctrl+P shortcut that launched Paint on the print reflex.
+- Engine-taskbar guard from #27/#29 (`taskbar-guard.ts`): superseded by the
+  WebOS-owned taskbar (WEB-0034), which owns clock placement and entry
+  clipping structurally instead of pinning engine internals (DEC-0019); its
+  dist contract lives on as `webos-taskbar.dist.test.ts` against the new
+  seam.
 
 ### Fixed
 
@@ -40,7 +77,8 @@
   (#27): the clock is re-pinned to the right edge on every resize, theme
   switch, and window open/close/retitle instead of only when the formatted
   minute string changes, and taskbar entries truncate at the entries-host
-  edge instead of spilling toward the clock.
+  edge instead of spilling toward the clock. (The WebOS-owned taskbar from
+  WEB-0034 now provides these guarantees directly.)
 
 ## 0.1.0 — 2026-08-15
 

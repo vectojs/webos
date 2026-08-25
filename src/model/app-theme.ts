@@ -1,4 +1,4 @@
-import type { AppThemeTokens, ThemePreset } from './theme-types';
+import type { AppThemeTokens, ThemePreset, TitlebarButtonShape } from './theme-types';
 import { contrastRatio } from './contrast';
 
 let current: AppThemeTokens = {
@@ -15,13 +15,32 @@ let current: AppThemeTokens = {
   danger: '#b91c1c',
   dangerSurface: '#fee2e2',
   inputSurface: '#ffffff',
+  menuBg: '#ffffff',
+  menuBorder: '#cbd5e1',
+  menuHover: '#f1f5f9',
+  menuRadius: 8,
+  trayBg: null,
+  buttonShape: 'rounded',
+  chromeFont: '"Segoe UI", system-ui, sans-serif',
+  taskbarHeight: 40,
+  windowShadow: null,
+  titlebarGradientTo: null,
+  titlebarInactiveBg: '#f1f5f9',
+  titlebarInactiveFg: '#64748b',
+  bevel: null,
+  pinstripe: null,
+  glow: null,
 };
 
 export function appTheme(): AppThemeTokens {
   return current;
 }
 
-/** Derive app colors from the shell preset while keeping the app contract stable. */
+/**
+ * Derive app colors from the shell preset while keeping the app contract
+ * stable. Era chrome tokens (spec 2026-08-24 §3.3) ride along as open-record
+ * keys the engine ignores; absent keys resolve to era-neutral defaults.
+ */
 export function setAppTheme(preset: ThemePreset): void {
   const tokens = preset.tokens;
   current = {
@@ -45,7 +64,83 @@ export function setAppTheme(preset: ThemePreset): void {
       4.5,
     ),
     inputSurface: colorToken(tokens['desktop-window-bg'], 'desktop-window-bg'),
+    menuBg: colorToken(tokens['desktop-menu-bg'], 'desktop-menu-bg'),
+    menuBorder: colorToken(tokens['desktop-menu-border'], 'desktop-menu-border'),
+    menuHover: colorToken(tokens['desktop-menu-hover'], 'desktop-menu-hover'),
+    menuRadius: numberToken(tokens['desktop-menu-radius'], 'desktop-menu-radius'),
+    trayBg:
+      tokens['desktop-tray-bg'] === undefined
+        ? null
+        : colorToken(tokens['desktop-tray-bg'], 'desktop-tray-bg'),
+    buttonShape: buttonShapeToken(tokens['desktop-titlebar-button-shape']),
+    chromeFont: colorToken(tokens['desktop-chrome-font'], 'desktop-chrome-font'),
+    taskbarHeight: numberToken(tokens['desktop-taskbar-height'], 'desktop-taskbar-height'),
+    windowShadow:
+      tokens['desktop-window-shadow'] === undefined
+        ? null
+        : colorToken(tokens['desktop-window-shadow'], 'desktop-window-shadow'),
+    titlebarGradientTo:
+      tokens['desktop-titlebar-gradient-to'] === undefined
+        ? null
+        : colorToken(tokens['desktop-titlebar-gradient-to'], 'desktop-titlebar-gradient-to'),
+    titlebarInactiveBg: colorToken(
+      tokens['desktop-titlebar-inactive-bg'],
+      'desktop-titlebar-inactive-bg',
+    ),
+    titlebarInactiveFg: colorToken(
+      tokens['desktop-titlebar-inactive-fg'],
+      'desktop-titlebar-inactive-fg',
+    ),
+    bevel:
+      tokens['desktop-bevel-light'] === undefined || tokens['desktop-bevel-dark'] === undefined
+        ? null
+        : {
+            lightOuter: colorToken(tokens['desktop-bevel-light'], 'desktop-bevel-light'),
+            lightInner: colorToken(
+              tokens['desktop-bevel-light-inner'],
+              'desktop-bevel-light-inner',
+            ),
+            darkInner: colorToken(tokens['desktop-bevel-dark-inner'], 'desktop-bevel-dark-inner'),
+            darkOuter: colorToken(tokens['desktop-bevel-dark'], 'desktop-bevel-dark'),
+          },
+    pinstripe:
+      tokens['desktop-pinstripe-color'] === undefined ||
+      tokens['desktop-pinstripe-gap'] === undefined
+        ? null
+        : {
+            color: colorToken(tokens['desktop-pinstripe-color'], 'desktop-pinstripe-color'),
+            gap: numberToken(tokens['desktop-pinstripe-gap'], 'desktop-pinstripe-gap'),
+          },
+    glow:
+      tokens['desktop-glow-color'] === undefined || tokens['desktop-glow-strength'] === undefined
+        ? null
+        : {
+            color: colorToken(tokens['desktop-glow-color'], 'desktop-glow-color'),
+            strength: numberToken(tokens['desktop-glow-strength'], 'desktop-glow-strength'),
+          },
   };
+}
+
+const BUTTON_SHAPES: readonly TitlebarButtonShape[] = [
+  'fullbleed',
+  'pill',
+  'circle',
+  'rounded',
+  'square',
+];
+
+function buttonShapeToken(value: unknown): TitlebarButtonShape {
+  if (typeof value !== 'string' || !BUTTON_SHAPES.includes(value as TitlebarButtonShape)) {
+    throw new TypeError(`desktop-titlebar-button-shape must be one of ${BUTTON_SHAPES.join('|')}`);
+  }
+  return value as TitlebarButtonShape;
+}
+
+function numberToken(value: string | number, name: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new TypeError(`${name} must be a finite number`);
+  }
+  return value;
 }
 
 function colorToken(value: string | number, name: string): string {
