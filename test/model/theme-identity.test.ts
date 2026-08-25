@@ -89,6 +89,24 @@ describe('theme identity contract', () => {
     expect(new Set(descriptions).size).toBe(THEME_PRESETS.length);
   });
 
+  // Review F5: description strings alone cannot guarantee era identity — two
+  // presets with identical 21-token matrices would pass. Pairwise inequality
+  // of the full engine-token matrix is the real distinctness contract.
+  it('engine-token matrices are pairwise distinct across all presets', () => {
+    const matrices = new Map(
+      THEME_PRESETS.map((p) => [
+        p.id,
+        JSON.stringify(Object.fromEntries(ENGINE_TOKENS.map((t) => [t, p.tokens[t]]))),
+      ]),
+    );
+    const ids = [...matrices.keys()];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        expect(matrices.get(ids[i]!)).not.toBe(matrices.get(ids[j]!));
+      }
+    }
+  });
+
   it('signature values pin each era to its spec §3.2 matrix', () => {
     const sig = (id: string, token: keyof ThemePreset['tokens']): string | number | undefined =>
       findPreset(id)?.tokens[token];
