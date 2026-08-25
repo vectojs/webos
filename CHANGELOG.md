@@ -11,6 +11,9 @@
 - Start-menu dismissal focus contract pinned on the post-rewrite
   architecture: Escape, toggle and click-outside closes all restore the
   opener; orphaned pre-rewrite `start-menu-keys.ts` removed.
+- A theme switch while the start menu is open no longer strands DOM focus
+  on body: dismissal re-validates the captured opener and falls back to
+  the rebuilt taskbar's Start tile (webos#36).
 
 ### Added (WEB-0034, webos#28 — theme identity & desktop-OS feel)
 

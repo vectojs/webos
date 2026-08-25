@@ -282,6 +282,40 @@ describe('boot smoke', () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it('lands focus on the rebuilt Start tile when a theme switch strands the opener', async () => {
+    const { scene, shell } = api();
+    const opener = parkFocusOnTaskbarButton(scene, shell);
+    openMenuThenDropFocusToBody(scene, shell);
+
+    // Issue #36: applyTheme destroys the bar owning the captured opener
+    // BEFORE closeStartMenu restores it, so the immediate .focus() hits a
+    // detached node and silently no-ops — the restore must fall back to the
+    // rebuilt bar's live Start tile.
+    webos().applyTheme('aqua');
+    expect(opener.isConnected).toBe(false);
+    // The deferred fallback targets the rebuilt bar's mirror, which only
+    // exists after an a11y sync pass. Under happy-dom the engine's rAF tick
+    // (the only thing that runs syncA11y) never advances, so replay that one
+    // pass by hand before the 34ms fallback timer fires — timers cannot
+    // interleave with this synchronous call.
+    const engineScene = scene as unknown as {
+      root: Entity;
+      syncA11y: (root: Entity) => void;
+    };
+    engineScene.syncA11y(engineScene.root);
+    const newStart = descendants(shell.taskbar!).find(
+      (entity) => entity.getA11yAttributes().role === 'button',
+    );
+    if (!newStart) throw new Error('Missing rebuilt taskbar button');
+    expect(document.getElementById(newStart.id)).not.toBeNull();
+    // Let the fallback timer fire; nothing else may take focus meanwhile.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(document.activeElement === document.getElementById(newStart.id)).toBe(true);
+    // Restore so later suites' boot-theme assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    engineScene.syncA11y(engineScene.root);
+  });
+
   it('projects disabled browser history controls and focused window state', async () => {
     const { scene, shell } = api();
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);

@@ -532,6 +532,15 @@ export class WebOSTaskbar extends UIComponent {
     return this.startTile.x + this.startTile.width;
   }
 
+  /**
+   * The Start tile entity, for focus-restoration fallbacks (issue #36): a
+   * theme switch destroys a captured opener with the old bar, so restore
+   * paths need the live tile to re-target Start.
+   */
+  get startButton(): Entity {
+    return this.startTile;
+  }
+
   /** Engine-compatible geometry hook (DesktopShell.resize calls this). */
   public setGeometry(width: number, y: number): void {
     this.width = width;
