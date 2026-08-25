@@ -278,6 +278,14 @@ export const notesApp: AppDefinition = {
         if (!inEditor) return;
         const el = editorMirror();
         if (!el) return;
+        // Clipboard permission denials must not fail silently — the status
+        // line carries a transient hint until the next refreshStatus().
+        const reportClipboard = (ok: boolean): void => {
+          if (!ok) {
+            status.setText(`${statusBase}  |  Clipboard unavailable`);
+            status.scene?.markDirty();
+          }
+        };
         showSurfaceMenu(
           scene,
           x,
@@ -285,9 +293,9 @@ export const notesApp: AppDefinition = {
           buildNotepadEditMenuItems(
             { hasSelection: el.selectionEnd > el.selectionStart },
             {
-              cut: () => void mirrorCut(el),
-              copy: () => void mirrorCopy(el),
-              paste: () => void mirrorPaste(el),
+              cut: () => void mirrorCut(el).then(reportClipboard),
+              copy: () => void mirrorCopy(el).then(reportClipboard),
+              paste: () => void mirrorPaste(el).then(reportClipboard),
               selectAll: () => mirrorSelectAll(el),
             },
           ),
