@@ -6,9 +6,13 @@
  * alpha under surfaces WebOS owns (start menu, context menu, splash).
  *
  * Composite grammar: `"dx dy blur rgba(r,g,b,a)"[; "..."]*` — offsets in px.
+ * Hex colors (#rgb/#rrggbb/…) are accepted too; alpha falloff runs through
+ * the shared scaleAlpha (src/chrome/color.ts), so hex layers fade like rgba
+ * ones instead of overdrawing at full opacity (review F1).
  */
 
 import type { IRenderer } from '@vectojs/core';
+import { scaleAlpha } from './color';
 
 export interface ShadowLayer {
   dx: number;
@@ -35,17 +39,6 @@ export function parseShadowToken(value: string | null | undefined): ShadowLayer[
     });
   }
   return layers;
-}
-
-/** Scale the alpha of a css color string; non-rgba colors pass through. */
-function scaleAlpha(color: string, factor: number): string {
-  const m = /^rgba?\(([^)]*)\)$/i.exec(color);
-  if (!m) return color;
-  const parts = m[1].split(',').map((p) => p.trim());
-  if (parts.length < 3) return color;
-  const a = parts.length >= 4 ? Number.parseFloat(parts[3]) : 1;
-  const scaled = Math.max(0, Math.min(1, a * factor));
-  return `rgba(${parts[0]},${parts[1]},${parts[2]},${scaled})`;
 }
 
 /**

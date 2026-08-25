@@ -21,6 +21,7 @@ import { appTheme } from '../model/app-theme';
 import type { ThemePreset } from '../model/theme-types';
 import { formatTaskbarClock, type ClockReading } from '../model/clock-format';
 import { drawPinstripes, drawRaisedBevel, drawSunkenBevel } from '../chrome/bevels';
+import { scaleHex } from '../chrome/color';
 import { DESKTOP_ICON_SPECS, themedIconSvg, type DesktopIconSpec } from './icons';
 
 /** Apps shown as pinned launcher tiles (subset keeps narrow viewports sane). */
@@ -693,14 +694,4 @@ export class WebOSTaskbar extends UIComponent {
     this.unsub();
     super.destroy();
   }
-}
-
-function scaleHex(hex: string, factor: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return hex;
-  const n = Number.parseInt(m[1], 16);
-  const r = Math.round(((n >> 16) & 255) * factor);
-  const g = Math.round(((n >> 8) & 255) * factor);
-  const b = Math.round((n & 255) * factor);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }

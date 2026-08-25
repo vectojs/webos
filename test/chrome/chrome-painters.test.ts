@@ -6,12 +6,14 @@
 import { describe, expect, it } from 'bun:test';
 import type { IRenderer } from '@vectojs/core';
 import { drawShadow, parseShadowToken } from '../../src/chrome/shadow';
+import { glowStackColors, parseColor, scaleAlpha, scaleHex } from '../../src/chrome/color';
 import {
   drawPinstripes,
   drawRaisedBevel,
   drawSunkenBevel,
   type BevelColors,
 } from '../../src/chrome/bevels';
+import { findPreset } from '../../src/model/themes';
 
 function mockRenderer(): {
   r: IRenderer;
@@ -81,6 +83,72 @@ describe('drawShadow', () => {
       { dx: 0, dy: 0, blur: 0, color: '#FF71CE' },
     ]);
     expect(fills).toHaveLength(1);
+  });
+
+  // Regression (review F1): hex layers used to bypass scaleAlpha and render
+  // every ring at full opacity - a solid blob stack instead of a falloff.
+  it('hex shadow tokens fade like rgba ones instead of rendering a solid stack', () => {
+    const { r, fills } = mockRenderer();
+    drawShadow(r, 0, 0, 100, 50, 6, parseShadowToken('2 -3 26 #FF71CE'));
+    expect(fills.length).toBeGreaterThan(1);
+    // Every ring is the parsed hex normalized to rgba - none passes through.
+    expect(fills.every((f) => f.startsWith('rgba(255,113,206,'))).toBe(true);
+    const alphas = fills.map((f) => Number(/([\d.]+)\)$/.exec(f)?.[1]));
+    for (let i = 1; i < alphas.length; i++) {
+      expect(alphas[i]).toBeLessThan(alphas[i - 1]!);
+    }
+    expect(alphas.every((a) => a < 1)).toBe(true);
+  });
+});
+
+describe('color helpers (review F1)', () => {
+  it('parses every token color form WebOS ships', () => {
+    expect(parseColor('#FF71CE')).toEqual({ r: 255, g: 113, b: 206, a: 1 });
+    expect(parseColor('#F7C')).toEqual({ r: 255, g: 119, b: 204, a: 1 });
+    expect(parseColor('#FF71CE80')?.a).toBeCloseTo(128 / 255, 5);
+    expect(parseColor('rgba(10,20,35,.34)')).toEqual({
+      r: 10,
+      g: 20,
+      b: 35,
+      a: 0.34,
+    });
+    expect(parseColor('rgb(1,2,3)')).toEqual({ r: 1, g: 2, b: 3, a: 1 });
+    expect(parseColor('not-a-color')).toBeNull();
+  });
+
+  it('scaleAlpha multiplies alpha on hex input instead of passing it through', () => {
+    expect(scaleAlpha('#FF71CE', 0.25)).toBe('rgba(255,113,206,0.25)');
+    expect(scaleAlpha('#FF71CE', 2)).toBe('rgba(255,113,206,1)');
+    expect(scaleAlpha('rgba(10,20,35,.34)', 0.5)).toBe('rgba(10,20,35,0.17)');
+    expect(scaleAlpha('garbage', 0.5)).toBe('garbage');
+  });
+
+  it('vaporwave glow token yields a real falloff across the overdraw stack', () => {
+    // The shipped token is HEX - the old `.replace(")", ...)` never matched
+    // it, so both overdraws painted at full opacity.
+    const tokens = findPreset('vaporwave')!.tokens;
+    const color = String(tokens['desktop-glow-color']);
+    const strength = Number(tokens['desktop-glow-strength']);
+    expect(color).toBe('#FF71CE');
+    const stack = glowStackColors(color, strength);
+    expect(stack.length).toBe(strength);
+    // Draw order is faintest halo first, strongest core last; peak alpha must
+    // stay at 0.25 so the wordmark under the halo never gets an opaque coat.
+    const alphas = stack.map((c) => Number(/rgba\(\d+,\d+,\d+,([\d.]+)\)/.exec(c)?.[1]));
+    for (let i = 1; i < alphas.length; i++) {
+      expect(alphas[i]).toBeGreaterThan(alphas[i - 1]!);
+    }
+    expect(Math.max(...alphas)).toBeLessThanOrEqual(0.25);
+    // Channels survive untouched - only alpha steps down from full opacity.
+    expect(stack.every((c) => c.startsWith('rgba(255,113,206,'))).toBe(true);
+  });
+
+  it('scaleHex darkens six-digit hex only, preserving output form', () => {
+    expect(scaleHex('#FFFFFF', 0.72)).toBe('#b8b8b8');
+    expect(scaleHex('#1084D0', 0.5)).toBe('#084268');
+    // Non-hex passthrough keeps callers visible.
+    expect(scaleHex('rgba(255,255,255,1)', 0.72)).toBe('rgba(255,255,255,1)');
+    expect(scaleHex('#FFF', 0.72)).toBe('#FFF');
   });
 });
 

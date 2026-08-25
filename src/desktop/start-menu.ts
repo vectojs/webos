@@ -19,6 +19,7 @@ import { Button, ContextMenu, Flow, type ContextMenuItem } from '@vectojs/ui';
 import { appTheme } from '../model/app-theme';
 import { buildProgramGroups, filterApps, pushRecent } from '../model/start-menu-model';
 import { drawPinstripes, drawRaisedBevel } from '../chrome/bevels';
+import { glowStackColors } from '../chrome/color';
 import { drawShadow, parseShadowToken } from '../chrome/shadow';
 import { themedIconSvg } from './icons';
 import { ThemedInput } from '../app/ui-helpers';
@@ -124,7 +125,6 @@ export class WebOSStartMenu extends UIComponent {
     this.add(this.buildFooter());
 
     this.rebuildGrid('');
-    void t;
   }
 
   /** Hit-test for outside-click dismissal. */
@@ -183,7 +183,6 @@ export class WebOSStartMenu extends UIComponent {
       this.gridHost.add(tile);
       shown += 1;
     }
-    void known;
 
     // Recent row area sits below the grid.
     for (const b of this.recentButtons) {
@@ -266,14 +265,10 @@ export class WebOSStartMenu extends UIComponent {
       drawPinstripes(r, this.x, this.y + 2, this.width, 32, t.pinstripe.color, t.pinstripe.gap);
     }
     if (t.glow && this.presetId === 'vaporwave') {
-      for (let i = t.glow.strength; i >= 1; i--) {
-        r.fillText(
-          'WebOS',
-          this.x + 14,
-          this.y + 24,
-          `600 14px ${t.chromeFont}`,
-          t.glow.color.replace(')', `,${0.25 / i})`).replace('#', '#'),
-        );
+      // Hex glow tokens included: the shared helper applies the 0.25/i
+      // falloff (review F1 — string replace silently no-opped on #RRGGBB).
+      for (const glowColor of glowStackColors(t.glow.color, t.glow.strength)) {
+        r.fillText('WebOS', this.x + 14, this.y + 24, `600 14px ${t.chromeFont}`, glowColor);
       }
     }
 
