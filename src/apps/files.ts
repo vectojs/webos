@@ -16,7 +16,15 @@ type VfsEntry = Awaited<ReturnType<Vfs['list']>>[number];
 /** Preview character ceiling — parity with the browser's truncated hint. */
 const PREVIEW_LIMIT = 2000;
 
-class FilesContent extends Stack {
+/** Floor for the list viewport so tiny windows keep a usable listing. */
+export const FILES_MIN_LIST_HEIGHT = 120;
+
+/**
+ * Lays out the client column: every sibling keeps its own height and the
+ * inner list ScrollView takes the remaining window height (audit-3, issue
+ * #33 — it was a hardcoded 150px strip that never grew with the window).
+ */
+export class FilesContent extends Stack {
   constructor(
     private readonly navBar: Stack,
     private readonly list: ScrollView,
@@ -30,6 +38,15 @@ class FilesContent extends Stack {
     const width = Math.max(0, this.width);
     this.navBar.maxWidth = width;
     this.navBar.layout();
+    let others = 0;
+    for (const child of this.children) {
+      if (child !== this.list) others += child.height;
+    }
+    const gaps = Math.max(0, this.children.length - 1) * this.gap;
+    // `this.height` is the client-area height the hosting root assigned before
+    // layout; at minimum-size windows the floor overflows into the outer
+    // document scroll, which is its reason to exist.
+    this.list.height = Math.max(FILES_MIN_LIST_HEIGHT, this.height - others - gaps);
     this.list.width = width;
     for (const row of this.rows.children) row.width = width;
     this.rows.width = width;
@@ -57,13 +74,14 @@ export const filesApp: AppDefinition = {
     const pathLabel = t('Location: /', 14);
     const preview = p('');
     const countLabel = p('0 items', 11);
-    // Scrollable list region: rows stack inside a ScrollView so a long listing
-    // scrolls instead of clipping (the outer vstack lays out once).
+    // Scrollable list region: rows stack inside a ScrollView whose viewport
+    // height FilesContent.layout() binds to the window client area, so a tall
+    // window shows more listing instead of clipping at a fixed strip.
     const rowsHost = new Stack({ direction: 'vertical', gap: 2 });
     rowsHost.interactive = false;
     const scroll = new ScrollView({
       width: 480,
-      height: 150,
+      height: FILES_MIN_LIST_HEIGHT,
       scrollPhysics: DOCUMENT_SCROLL_PHYSICS,
     });
     scroll.content.add(rowsHost);

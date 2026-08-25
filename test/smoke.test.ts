@@ -397,4 +397,110 @@ describe('boot smoke', () => {
     webos().applyTheme(DEFAULT_PRESET.id);
     shell.windowManager.close(win);
   });
+
+  it('re-opens the top resize rim above every opened window titlebar', () => {
+    const { shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('paint');
+    const handle = (win as unknown as { dragHandle: Entity }).dragHandle;
+    const rim = win.chrome.resizeHandle;
+    const midTitleY = Math.round(win.chrome.titlebarHeight / 2);
+
+    // Mid-titlebar stays owned by the handle → titlebar drag still works.
+    expect(handle.isPointInside(win.x + 60, win.y + midTitleY)).toBe(true);
+    // Top-rim presses fall through to the window root's resize handler.
+    expect(handle.isPointInside(win.x + 60, win.y + rim - 1)).toBe(false);
+    expect(handle.isPointInside(win.x + rim - 1, win.y + rim - 1)).toBe(false);
+
+    // Maximized windows have no rim: the full handle must come back so
+    // restore-under-cursor dragging keeps working.
+    win.maximize();
+    expect(handle.isPointInside(win.x + 60, win.y + rim - 1)).toBe(true);
+    win.restore();
+    expect(handle.isPointInside(win.x + 60, win.y + rim - 1)).toBe(false);
+    shell.windowManager.close(win);
+  });
+
+  it('pulls a restore-under-cursor window back inside the work area on pointerup', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    const area = shell.layout.workArea(shell.layout.primary().id);
+
+    // Simulate the engine's unclamped drop on the drag path: a live pointer
+    // gesture (pointerdown) is what defers the clamp to gesture end.
+    document.dispatchEvent(new Event('pointerdown'));
+    win.maximize();
+    win.restore();
+    win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
+    // Mid-gesture the window must still hang where the engine dropped it.
+    expect(win.x).toBe(area.x - 500);
+    expect(win.y).toBe(area.y - 500);
+    document.dispatchEvent(new Event('pointercancel'));
+
+    const clamped = {
+      x: win.x,
+      y: win.y,
+      right: win.x + win.width,
+      bottom: win.y + win.height,
+    };
+    expect(clamped.x).toBeGreaterThanOrEqual(area.x);
+    expect(clamped.y).toBeGreaterThanOrEqual(area.y);
+    expect(clamped.right).toBeLessThanOrEqual(area.x + area.width);
+    expect(clamped.bottom).toBeLessThanOrEqual(area.y + area.height);
+
+    // The clamp is one-shot: a later in-bounds pointerup must not move windows.
+    const before = { x: win.x, y: win.y };
+    document.dispatchEvent(new Event('pointerup'));
+    expect(win.x).toBe(before.x);
+    expect(win.y).toBe(before.y);
+    scene.markDirty();
+    shell.windowManager.close(win);
+  });
+
+  it('re-clamps a keyboard restore immediately instead of arming a stale pending clamp', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    const area = shell.layout.workArea(shell.layout.primary().id);
+
+    // No pointerdown → no gesture in flight. The restore's re-clamp must be
+    // consumed at arm time, so an arbitrary LATER pointerup anywhere cannot
+    // fire a stale clamp against whatever the window has become since
+    // (review LOW-1).
+    win.maximize();
+    win.restore();
+    win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
+    document.dispatchEvent(new Event('pointerup'));
+    expect(win.x).toBe(area.x - 500);
+    expect(win.y).toBe(area.y - 500);
+    scene.markDirty();
+    shell.windowManager.close(win);
+  });
+
+  it('drops the pending restore clamp when the window closes before gesture end', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    const area = shell.layout.workArea(shell.layout.primary().id);
+
+    document.dispatchEvent(new Event('pointerdown'));
+    win.maximize();
+    win.restore();
+    win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
+
+    // Close mid-gesture, then end the gesture: setGeometry must never run on
+    // the destroyed instance (review LOW-2).
+    let geometryWrites = 0;
+    const realSetGeometry = win.setGeometry.bind(win);
+    (win as unknown as { setGeometry: typeof win.setGeometry }).setGeometry = (...args) => {
+      geometryWrites += 1;
+      realSetGeometry(...args);
+    };
+    shell.windowManager.close(win);
+    expect(shell.windowManager.list()).not.toContain(win);
+    document.dispatchEvent(new Event('pointerup'));
+    expect(geometryWrites).toBe(0);
+    scene.markDirty();
+  });
 });

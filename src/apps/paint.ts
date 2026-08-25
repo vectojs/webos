@@ -36,7 +36,8 @@ const COLORS = [
   '#ec4899',
 ];
 
-class PaintRoot extends Entity {
+/** Exported for hit-test/clear unit tests; the app surface is `paintApp`. */
+export class PaintRoot extends Entity {
   private strokes: PaintStroke[] = [
     {
       color: '#3b82f6',
@@ -66,6 +67,11 @@ class PaintRoot extends Entity {
   private currentColor = '#000000';
   private currentSize = 3;
   private readonly swatches: Swatch[];
+  // Clear is NOT a swatch: keeping it out of the color list means the toolbar
+  // hit-test can never match it first and swallow the clear action (audit-3
+  // P1, PX-0125 — the old sentinel {color:''} entry made Clear dead code and
+  // left currentColor as '' after a click).
+  private readonly clearBtn: Swatch;
 
   constructor() {
     super();
@@ -77,13 +83,12 @@ class PaintRoot extends Entity {
       sx += 28;
       return sw;
     });
-    // Clear button sits right after the palette.
-    const clear = { x: sx + 12, y: 8, w: 48, h: 22, color: '' };
+    this.clearBtn = { x: sx + 12, y: 8, w: 48, h: 22, color: '' };
 
     this.on('pointerdown', (e: any) => {
       const lx = e.localX ?? 0;
       const ly = e.localY ?? 0;
-      // Toolbar: hit-test swatches (D5) and Clear — not dead pixels anymore.
+      // Toolbar: hit-test color swatches first, then Clear.
       if (ly < TOOLBAR_H) {
         const swatch = this.swatches.find(
           (s) => lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h,
@@ -93,7 +98,8 @@ class PaintRoot extends Entity {
           this.scene?.markDirty();
           return;
         }
-        if (lx >= clear.x && lx <= clear.x + clear.w && ly >= clear.y && ly <= clear.y + clear.h) {
+        const c = this.clearBtn;
+        if (lx >= c.x && lx <= c.x + c.w && ly >= c.y && ly <= c.y + c.h) {
           this.strokes = [];
           this.scene?.markDirty();
           return;
@@ -121,8 +127,6 @@ class PaintRoot extends Entity {
     this.on('pointerup', () => {
       this.currentStroke = null;
     });
-
-    this.swatches.push(clear);
   }
 
   public override isPointInside(gx: number, gy: number): boolean {
@@ -153,15 +157,6 @@ class PaintRoot extends Entity {
     r.stroke('#cbd5e1', 1);
 
     for (const s of this.swatches) {
-      if (!s.color) {
-        // Clear button
-        r.beginPath();
-        r.roundRect(s.x, s.y, s.w, s.h, 4);
-        r.fill('#fee2e2');
-        r.stroke('rgba(0,0,0,0.2)', 1);
-        r.fillText('Clear', s.x + 10, s.y + 15, '500 11px "Segoe UI", sans-serif', '#b91c1c');
-        continue;
-      }
       r.beginPath();
       r.roundRect(s.x, s.y, s.w, s.h, 4);
       r.fill(s.color);
@@ -171,11 +166,17 @@ class PaintRoot extends Entity {
       );
     }
 
+    const c = this.clearBtn;
+    r.beginPath();
+    r.roundRect(c.x, c.y, c.w, c.h, 4);
+    r.fill('#fee2e2');
+    r.stroke('rgba(0,0,0,0.2)', 1);
+    r.fillText('Clear', c.x + 10, c.y + 15, '500 11px "Segoe UI", sans-serif', '#b91c1c');
+
     // Hint sits right of the Clear button. IRenderer has no measureText, so
     // budget ~5.5px per glyph at 11px and hide rather than clip when the
     // window cannot fit it (the palette alone spans most of the minimum width).
-    const clearSwatch = this.swatches[this.swatches.length - 1]!;
-    const hintX = clearSwatch.x + clearSwatch.w + 16;
+    const hintX = c.x + c.w + 16;
     const hint = 'Click a color, then drag on the canvas to draw';
     if (hintX + hint.length * 5.5 <= this.width) {
       r.fillText(hint, hintX, 22, '500 11px "Segoe UI", sans-serif', '#475569');

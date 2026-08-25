@@ -274,6 +274,15 @@ export const browserApp: AppDefinition = {
       if (e.key === 'Enter') navigate(addressBar.value);
     });
 
+    // Audit-3 (#33): focus selects the whole address so typing replaces it
+    // instead of appending mid-URL. select() runs on the projected <input>;
+    // the engine forwards its native select event back to this Input, keeping
+    // the canvas selection highlight in sync.
+    addressBar.on('focus', () => {
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement) el.select();
+    });
+
     const navBar = new Stack({ direction: 'horizontal', gap: 6, wrap: true });
     backButton = btn('◀ Back', false, goBack);
     forwardButton = btn('Forward ▶', false, goForward);

@@ -2,7 +2,7 @@
  * Boot — Scene(onDemand) → DesktopShell → icon grid → seed VFS → devtools hook.
  */
 
-import { Scene } from '@vectojs/core';
+import { Scene, type Entity } from '@vectojs/core';
 import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
 import {
   buildConfig,
@@ -13,12 +13,13 @@ import {
   svgDataUrl,
 } from '../config';
 import { peekNextNoteWindowTitle } from '../apps/notes';
+import { exposeTopResizeRim } from '../app/window-utils';
 import { appTheme, setAppTheme } from '../model/app-theme';
 import { findPreset, THEME_PRESETS } from '../model/themes';
 import { pushRecent } from '../model/start-menu-model';
 import { StorageVfs } from '../model/storage-vfs';
 import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
-import { fitGeometry } from '../model/window-geometry';
+import { clampPosition, fitGeometry } from '../model/window-geometry';
 import {
   DesktopClickCatcher,
   DesktopIcon,
@@ -249,6 +250,54 @@ function focusedWindow(): DesktopWindow | null {
 function workArea(): { x: number; y: number; width: number; height: number } {
   return shell.layout.workArea(shell.layout.primary().id);
 }
+
+// ---------------------------------------------------- window chrome patches
+
+/**
+ * Restore-under-cursor re-clamp (audit-3 P2, issue #33). The engine's
+ * `beginTitlebarDrag` drops a maximized window under the cursor WITHOUT
+ * clamping on the pointerdown path (measured x=-107.75), and its subsequent
+ * drag clamp deliberately allows hanging off-screen. Track
+ * maximized→restored transitions and, once the gesture ends, pull just those
+ * windows back inside the work area — normal drags keep engine behavior.
+ * Restores that arrive OUTSIDE a pointer gesture (keyboard, taskbar) re-clamp
+ * immediately: nothing will end their "gesture", so deferring them would fire
+ * at an arbitrary later pointerup anywhere (review LOW-1). WEB-0038 owns
+ * general clamping; `clampWindowsToWorkArea` is not touched.
+ */
+const everMaximized = new WeakSet<DesktopWindow>();
+const pendingRestoreClamp = new Set<DesktopWindow>();
+let pointerGestureActive = false;
+
+function reclampRestoredWindows(): void {
+  if (pendingRestoreClamp.size === 0) return;
+  const area = workArea();
+  for (const win of [...pendingRestoreClamp]) {
+    pendingRestoreClamp.delete(win);
+    if (win.maximized || win.minimized) continue;
+    const pos = clampPosition(win.x, win.y, win.width, win.height, area);
+    if (pos.x !== win.x || pos.y !== win.y) {
+      win.setGeometry(pos.x, pos.y, win.width, win.height);
+      scene.markDirty();
+    }
+  }
+}
+
+// The engine ends its drag on window-level up/cancel listeners; position is
+// already final by the time any pointerup handler runs, so document-level
+// ordering is irrelevant here. The flag resets inside endPointerGesture
+// before reclamp's empty-pending early-return could skip it, so it cannot
+// wedge true across gestures that arm nothing.
+function endPointerGesture(): void {
+  if (!pointerGestureActive) return;
+  pointerGestureActive = false;
+  reclampRestoredWindows();
+}
+document.addEventListener('pointerdown', () => {
+  pointerGestureActive = true;
+});
+document.addEventListener('pointerup', endPointerGesture);
+document.addEventListener('pointercancel', endPointerGesture);
 
 /**
  * Pull any window whose box escapes the work area back inside — shrinking
@@ -533,6 +582,35 @@ fit();
 // an unrelated event must not yank them back (PX-0159). Taskbar entries
 // reflow via the bar's own wm subscription.
 shell.windowManager.on((e) => clampWindowsOnEvent(e, shell.windowManager.list(), workArea()));
+// Per-window chrome patches ride the window-manager stream: the top resize
+// rim is re-opened above the titlebar drag handle (audit-3 P1) and
+// maximize→restore transitions arm the restore-under-cursor re-clamp
+// (audit-3 P2).
+shell.windowManager.on(({ type, window: win }) => {
+  if (type === 'open') {
+    const handle = (win as unknown as { dragHandle?: Entity }).dragHandle;
+    if (handle) exposeTopResizeRim(handle, win);
+    return;
+  }
+  // A window closed mid-gesture must not receive setGeometry on the next
+  // pointerup (review LOW-2): drop it from both trackers.
+  if (type === 'close') {
+    everMaximized.delete(win);
+    pendingRestoreClamp.delete(win);
+    return;
+  }
+  if (type === 'state') {
+    if (win.maximized) {
+      everMaximized.add(win);
+    } else if (everMaximized.has(win) && !win.minimized) {
+      everMaximized.delete(win);
+      pendingRestoreClamp.add(win);
+      // No pointer gesture in flight → this restore came from keyboard or
+      // taskbar; nothing will end a "gesture", so re-clamp now (review LOW-1).
+      if (!pointerGestureActive) reclampRestoredWindows();
+    }
+  }
+});
 scene.start();
 // Era splash over the first paint (spec §4 #8): non-interactive, audit-safe.
 // ?nosplash skips the ~1.12s mark+fade for tests/benchmarks (query-param
