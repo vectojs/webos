@@ -77,6 +77,19 @@ describe('era icon treatments', () => {
     expect(new Set(svgs).size).toBe(svgs.length);
   });
 
+  // Regression (review F2): the Material-era feDropShadow used to hang off a
+  // zero-size invisible rect, silently no-oping while the defs substring
+  // still counted as distinctiveness.
+  it('cloud drop-shadow rides a painted glyph group, not an inert carrier rect', () => {
+    const svg = themedIconSvg('terminal', 'cloud');
+    const group = /<g filter="url\(#cloudSh\)">([\s\S]*?)<\/g>/.exec(svg);
+    expect(group).not.toBeNull();
+    // The filter wraps the base glyph, so the treatment actually renders.
+    expect(group![1]).toContain('M3 3h18');
+    expect(svg).toContain('<feDropShadow');
+    expect(svg).not.toContain('width="0"');
+  });
+
   it('treatments keep valid svg structure and wrap the base glyph', () => {
     for (const era of ['aero', 'y2k']) {
       const svg = themedIconSvg('terminal', era);

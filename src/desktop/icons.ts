@@ -112,6 +112,12 @@ type IconTreatment = {
   under?: string;
   /** Layers appended AFTER the base glyph (over it). */
   over?: string;
+  /**
+   * Wraps the base glyph's markup (e.g. in a filter-bearing group so SVG
+   * filters ride a VISIBLE node — review F2: a zero-size carrier rect
+   * renders nothing and the treatment silently no-ops).
+   */
+  wrap?: (inner: string) => string;
 };
 
 const ICON_TREATMENTS: Record<string, IconTreatment> = {
@@ -119,10 +125,10 @@ const ICON_TREATMENTS: Record<string, IconTreatment> = {
   aero: {
     over: '<rect x="2" y="18" width="20" height="4.5" rx="2.25" fill="rgba(0,0,0,0.12)"/>',
   },
-  // Material: 2px drop shadow via feDropShadow.
+  // Material: 2px drop shadow via feDropShadow on the painted glyph group.
   cloud: {
+    wrap: (inner: string): string => `<g filter="url(#cloudSh)">${inner}</g>`,
     over:
-      '<rect x="0" y="0" width="0" height="0" fill="none" filter="url(#cloudSh)"/>' +
       '<defs><filter id="cloudSh" x="-20%" y="-20%" width="140%" height="140%">' +
       '<feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.35"/></filter></defs>',
   },
@@ -179,7 +185,8 @@ export function themedIconSvg(appId: string, presetId: string): string {
   const t = ICON_TREATMENTS[presetId];
   if (!t) return base;
   const inner = base.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
-  return `${base.slice(0, base.indexOf('>') + 1)}${t.under ?? ''}${inner}${t.over ?? ''}</svg>`;
+  const wrapped = t.wrap ? t.wrap(inner) : inner;
+  return `${base.slice(0, base.indexOf('>') + 1)}${t.under ?? ''}${wrapped}${t.over ?? ''}</svg>`;
 }
 
 export interface DesktopIconSpec {
