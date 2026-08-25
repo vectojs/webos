@@ -5,8 +5,14 @@
 
 import type { IRenderer } from '@vectojs/core';
 import { Entity } from '@vectojs/core';
-import type { AppDefinition } from '@vectojs/desktop';
+import type { AppContext, AppDefinition } from '@vectojs/desktop';
+import type { ContextMenuItem } from '@vectojs/ui';
 import { appIconSvg } from '../desktop/icons';
+import {
+  registerWindowSurface,
+  showSurfaceMenu,
+  unregisterWindowSurface,
+} from '../desktop/context-menu';
 
 interface PaintStroke {
   points: { x: number; y: number }[];
@@ -129,6 +135,32 @@ export class PaintRoot extends Entity {
     });
   }
 
+  /** Completed strokes on the canvas (context menu enable state). */
+  public get strokeCount(): number {
+    return this.strokes.length;
+  }
+
+  /**
+   * Undo (WEB-0039, DEC-0025): pop the last completed stroke — the existing
+   * `strokes[]` array IS the history, so undo needs no new infrastructure.
+   */
+  public undoStroke(): boolean {
+    if (this.strokes.length === 0) return false;
+    this.strokes.pop();
+    this.currentStroke = null;
+    this.scene?.markDirty();
+    return true;
+  }
+
+  /** Remove every stroke — the toolbar Clear button's action. */
+  public clearAll(): boolean {
+    if (this.strokes.length === 0) return false;
+    this.strokes = [];
+    this.currentStroke = null;
+    this.scene?.markDirty();
+    return true;
+  }
+
   public override isPointInside(gx: number, gy: number): boolean {
     const local = this.worldToLocal(gx, gy);
     if (!local) return false;
@@ -193,5 +225,46 @@ export const paintApp: AppDefinition = {
   defaultHeight: 420,
   minWidth: 360,
   minHeight: 300,
-  create: () => new PaintRoot(),
+  create: (ctx: AppContext) => {
+    const root = new PaintRoot();
+    // Canvas right-click (issue #40): Undo / Clear over the whole Paint
+    // surface; both disable on an empty canvas.
+    registerWindowSurface(ctx.windowId, {
+      openContextMenu: (scene, x, y) => {
+        showSurfaceMenu(
+          scene,
+          x,
+          y,
+          buildPaintCanvasMenuItems(
+            { strokeCount: root.strokeCount },
+            {
+              undo: () => root.undoStroke(),
+              clear: () => root.clearAll(),
+            },
+          ),
+        );
+      },
+    });
+    ctx.windowManager.on((event) => {
+      if (event.type === 'close' && event.window.windowId === ctx.windowId) {
+        unregisterWindowSurface(ctx.windowId);
+      }
+    });
+    return root;
+  },
 };
+
+/**
+ * Menu inventory for the Paint canvas. Both verbs act on the stroke history;
+ * they disable when there is nothing to undo/clear.
+ */
+export function buildPaintCanvasMenuItems(
+  state: { strokeCount: number },
+  actions: { undo: () => void; clear: () => void },
+): ContextMenuItem[] {
+  const empty = state.strokeCount === 0;
+  return [
+    { label: 'Undo', disabled: empty, onClick: actions.undo },
+    { label: 'Clear canvas', disabled: empty, onClick: actions.clear },
+  ];
+}

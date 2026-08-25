@@ -85,3 +85,27 @@ describe('paint toolbar', () => {
     expect(p.strokes.length).toBe(2);
   });
 });
+
+describe('paint undo + clear API (WEB-0039, DEC-0025)', () => {
+  it('undo pops the last completed stroke and reports emptiness', () => {
+    const root = new PaintRoot();
+    expect(root.strokeCount).toBe(2);
+    expect(root.undoStroke()).toBe(true);
+    expect(root.strokeCount).toBe(1);
+    expect(root.undoStroke()).toBe(true);
+    expect(root.strokeCount).toBe(0);
+    // Empty canvas: undo is a no-op that reports false.
+    expect(root.undoStroke()).toBe(false);
+  });
+
+  it('clearAll empties the canvas exactly like the toolbar button', () => {
+    const root = new PaintRoot();
+    press(root, 200, 200); // start a fresh stroke on top of the seeds
+    root.emit('pointerup', { nativeEvent: {} } as never);
+    expect(root.strokeCount).toBe(3);
+    expect(root.clearAll()).toBe(true);
+    expect(root.strokeCount).toBe(0);
+    // Clearing an already-empty canvas reports false.
+    expect(root.clearAll()).toBe(false);
+  });
+});

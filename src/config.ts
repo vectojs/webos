@@ -128,7 +128,12 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
       },
       theme: { ...preset.tokens },
       shortcuts: {
-        'Control+n': { type: 'open-app', appId: 'notes' },
+        // WEB-0039 policy alignment: browser-RESERVED chords are NOT mapped.
+        // Control+n (new window), Control+w (close tab) and Meta+w are ignored
+        // by browser engines regardless of preventDefault, so mapping them
+        // only made the shortcut documentation lie. Notes stays reachable via
+        // the start menu/desktop icon; close-focused has no keyboard chord
+        // (titlebar menu + taskbar cover it). See model/shortcut-policy.ts.
         // Ctrl+P deliberately unbound (audit #25 P2-D): print reflex kept
         // launching Paint. Paint stays reachable via icon/menu; the shell's
         // guard preventDefaults browser Print everywhere — including inside
@@ -139,8 +144,6 @@ export function buildConfig(onTheme: (presetId: string) => void): BootConfig {
         'Control+Shift+C': { type: 'open-app', appId: 'calculator' },
         'Control+Shift+S': { type: 'open-app', appId: 'settings' },
         'Control+Shift+A': { type: 'open-app', appId: 'about' },
-        'Meta+w': { type: 'close-focused' },
-        'Control+w': { type: 'close-focused' },
         'Meta+Space': { type: 'toggle-start' },
         'Control+Space': { type: 'toggle-start' },
       },

@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+### Added (WEB-0039, webos#40 — per-surface context menus + shortcut policy)
+
+- Per-surface context menus behind a document-level capture router
+  (`context-routing.ts`): empty desktop (Refresh, New text document, Change
+  wallpaper, Display settings, Task Manager, About), window titlebars
+  (state-aware Minimize / Maximize / Restore / Close), Files entries
+  (Open / Rename… / Delete — rename file-only) and empty areas (New folder…,
+  auto-suffixed names), Notepad editor (Cut / Copy / Paste / Select All via the
+  projected textarea mirror + async clipboard), Paint canvas (Undo / Clear).
+- Right-click interception now covers the a11y projection mirrors (Buttons,
+  Inputs, the Notes textarea) which float above the canvas — previously the
+  native browser menu leaked through on every projected surface. The Browser
+  app viewport is the single deliberate passthrough zone (native page-content
+  semantics).
+- Global shortcut interception policy (`model/shortcut-policy.ts`, documented
+  in main.ts): owned chords preventDefault before the editable bail-out —
+  Ctrl+S saves the focused Notepad document, Ctrl+R/F5 reload protection with
+  F5 as desktop refresh outside editables, ContextMenu key / Shift+F10 opens
+  the focused surface's menu; F11, PrintScreen, Ctrl+A/X/C/V and
+  Ctrl+Shift+R pass through by design; browser-reserved chords documented as
+  unwinnable.
+- "New text document" writes `/docs/New Document.txt` (collision-suffixed)
+  to the VFS and opens Notepad ON that document via a pending-open channel;
+  exposed as `webos.newTextDocument()` on the scripting API.
+- Input dialog (`app/input-dialog.ts`) — shell-modal text prompt mirroring
+  ConfirmDialog semantics (Enter confirms trimmed value, Escape/cancel/close
+  resolve null) for Files rename and New Folder.
+
+### Changed (WEB-0039)
+
+- Engine config drops browser-reserved chord mappings (`Control+n`,
+  `Control+w`, `Meta+w`) that engines ignore anyway — the shortcut policy no
+  longer claims unwinnable chords; `vectojs://shortcuts` page and seed docs
+  updated to match reality.
+- Keyboard focus moves to a context menu's first enabled item on open so
+  arrows/Enter work immediately; Escape dismisses any open shell context
+  menu.
+
 ### Fixed (WEB-0035, webos#32)
 
 - Notes opens persisted documents with their saved content: the open path

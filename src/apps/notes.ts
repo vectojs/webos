@@ -9,14 +9,37 @@
 import { Entity, type IRenderer } from '@vectojs/core';
 import { baseName, type AppContext, type AppDefinition } from '@vectojs/desktop';
 import { Stack, Text, TextArea } from '@vectojs/ui';
+import type { ContextMenuItem } from '@vectojs/ui';
 import { btn, ClientRoot, hstack, p, ThemedTextArea } from '../app/ui-helpers';
 import { openConfirmDialog } from '../app/confirm-dialog';
 import { appIconSvg } from '../desktop/icons';
+import {
+  registerWindowSurface,
+  showSurfaceMenu,
+  unregisterWindowSurface,
+} from '../desktop/context-menu';
 import { UnsavedGuard } from '../model/unsaved-guard';
 
 const WELCOME_TEXT = 'Welcome to VectoJS Notes!\nEdit your notes and save directly to VFS.\n';
 
 let noteCounter = 0;
+
+/**
+ * Open-with-path request channel (WEB-0039): desktop "New text document" and
+ * future open-with flows set the next Notepad instance's document before
+ * shell.open('notes'). Consumed once by the next create(); safe because Notes
+ * is instances:'multiple' — an open always creates the consuming window.
+ */
+let pendingDocPath: string | null = null;
+
+export function requestNoteDocument(path: string): void {
+  pendingDocPath = path;
+}
+
+/** Window title of the requested document, or null when none is pending. */
+export function peekPendingNoteWindowTitle(): string | null {
+  return pendingDocPath ? `${baseName(pendingDocPath)} - Notepad` : null;
+}
 
 /**
  * Window title of the note that will be created by the NEXT open (audit #25
@@ -74,7 +97,9 @@ export const notesApp: AppDefinition = {
   minHeight: 320,
   create: (ctx: AppContext) => {
     noteCounter++;
-    const path = `/notes/note-${noteCounter}.txt`;
+    const requestedPath = pendingDocPath;
+    pendingDocPath = null;
+    const path = requestedPath ?? `/notes/note-${noteCounter}.txt`;
     const docName = baseName(path);
     // Baseline starts at the boot text: reloading pristine welcome copy loses
     // nothing, so no dialog — any divergence since boot is an edit.
@@ -228,11 +253,153 @@ export const notesApp: AppDefinition = {
     );
     const root = new ClientRoot(new NotesLayout(status, area, toolBar), 16);
     rootHolder.root = root;
+
+    // -------------------------------------------- right-click + owned chords
+    // The edit menu operates on the projected shadow <textarea> (the sanctioned
+    // DOM exception): cut/copy prefer execCommand (sync, gesture-permitted),
+    // paste uses the async clipboard API and syncs the engine via a synthetic
+    // input event (the projection forwards it as the entity 'change' event).
+    function editorMirror(): HTMLTextAreaElement | null {
+      const found = findTextArea(root);
+      if (!found) return null;
+      const el = document.getElementById(found.id);
+      return el instanceof HTMLTextAreaElement ? el : null;
+    }
+
+    registerWindowSurface(ctx.windowId, {
+      openContextMenu: (scene, x, y) => {
+        const local = area.worldToLocal(x, y);
+        const inEditor =
+          local !== null &&
+          local.x >= 0 &&
+          local.y >= 0 &&
+          local.x <= area.width &&
+          local.y <= area.height;
+        if (!inEditor) return;
+        const el = editorMirror();
+        if (!el) return;
+        showSurfaceMenu(
+          scene,
+          x,
+          y,
+          buildNotepadEditMenuItems(
+            { hasSelection: el.selectionEnd > el.selectionStart },
+            {
+              cut: () => void mirrorCut(el),
+              copy: () => void mirrorCopy(el),
+              paste: () => void mirrorPaste(el),
+              selectAll: () => mirrorSelectAll(el),
+            },
+          ),
+        );
+      },
+      handleShellChord: (chord) => {
+        if (chord !== 'Control+S') return false;
+        void saveCurrent();
+        return true;
+      },
+    });
+    ctx.windowManager.on((event) => {
+      if (event.type === 'close' && event.window.windowId === ctx.windowId) {
+        unregisterWindowSurface(ctx.windowId);
+      }
+    });
+
     refreshStatus();
     restorePersistedContent();
     return root;
   },
 };
+
+/** First TextArea under an entity subtree, depth-first. */
+function findTextArea(root: Entity): TextArea | null {
+  if (root instanceof TextArea) return root;
+  for (const child of root.children ?? []) {
+    const found = findTextArea(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Menu inventory for the Notepad editor surface. Cut/Copy disable without a
+ * selection; Paste/Select All always apply. Shortcut hints are documentation
+ * — the native editable path owns those chords.
+ */
+export function buildNotepadEditMenuItems(
+  state: { hasSelection: boolean },
+  actions: {
+    cut: () => void;
+    copy: () => void;
+    paste: () => void;
+    selectAll: () => void;
+  },
+): ContextMenuItem[] {
+  return [
+    {
+      label: 'Cut',
+      shortcut: 'Ctrl+X',
+      disabled: !state.hasSelection,
+      onClick: actions.cut,
+    },
+    {
+      label: 'Copy',
+      shortcut: 'Ctrl+C',
+      disabled: !state.hasSelection,
+      onClick: actions.copy,
+    },
+    { label: 'Paste', shortcut: 'Ctrl+V', onClick: actions.paste },
+    { separator: true },
+    { label: 'Select All', shortcut: 'Ctrl+A', onClick: actions.selectAll },
+  ];
+}
+
+/** Sync a programmatic mirror mutation back into the canvas component. */
+function emitInputEvent(el: HTMLTextAreaElement): void {
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function mirrorCopy(el: HTMLTextAreaElement): Promise<boolean> {
+  const selected = el.value.slice(el.selectionStart, el.selectionEnd);
+  if (document.execCommand?.('copy')) return true;
+  try {
+    await navigator.clipboard.writeText(selected);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function mirrorCut(el: HTMLTextAreaElement): Promise<boolean> {
+  if (!document.execCommand?.('cut')) {
+    const selected = el.value.slice(el.selectionStart, el.selectionEnd);
+    try {
+      await navigator.clipboard.writeText(selected);
+    } catch {
+      return false;
+    }
+    el.setRangeText('', el.selectionStart, el.selectionEnd, 'end');
+    emitInputEvent(el);
+  }
+  return true;
+}
+
+async function mirrorPaste(el: HTMLTextAreaElement): Promise<boolean> {
+  let text: string;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    return false;
+  }
+  el.setRangeText(text, el.selectionStart, el.selectionEnd, 'end');
+  emitInputEvent(el);
+  return true;
+}
+
+function mirrorSelectAll(el: HTMLTextAreaElement): void {
+  el.focus();
+  el.select();
+}
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

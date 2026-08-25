@@ -46,7 +46,22 @@ const PAGES: Record<string, Page> = {
   },
   'vectojs://shortcuts': {
     title: 'Keyboard Shortcuts',
-    body: 'Ctrl+Space  Start menu\nCtrl+N      Notes\nCtrl+Alt+T  Terminal\nCtrl+W      Close focused\nCtrl+Alt+←/→/↑/↓  Snap focused window\nCtrl+Alt+G  Tile all windows',
+    // Kept truthful against shortcut-policy.ts: browser-reserved chords are
+    // listed as impossible instead of promised (issue #40).
+    body:
+      'Right-click          Menus on desktop, files, editor, canvas, titlebars\n' +
+      'ContextMenu/Shift+F10  Menu for the focused surface\n' +
+      'Ctrl+S               Save the focused Notepad document\n' +
+      'F5                   Refresh desktop layout & icons\n' +
+      'Ctrl+Space           Start menu\n' +
+      'Ctrl+E / Ctrl+B      Files / Browser\n' +
+      'Ctrl+Alt+T           Terminal\n' +
+      'Ctrl+Alt+←/→/↑/↓     Snap focused window · Ctrl+Alt+G tiles all\n' +
+      '\n' +
+      'Host-browser reality: Ctrl+W/T/N close/tab/new-window are RESERVED by the\n' +
+      'browser and cannot be intercepted from a page. F11, PrintScreen and\n' +
+      'Ctrl+A/X/C/V inside documents pass through natively; Ctrl+Shift+R stays\n' +
+      'available as a hard reload.',
   },
 };
 

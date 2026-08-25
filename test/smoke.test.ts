@@ -14,6 +14,7 @@ import { appTheme } from '../src/model/app-theme';
 import { findPreset } from '../src/model/themes';
 import { openConfirmDialog } from '../src/app/confirm-dialog';
 import { peekNextNoteWindowTitle } from '../src/apps/notes';
+import { closeActiveContextMenu, desktopContextMenuOpen } from '../src/desktop/context-menu';
 
 interface WebosApi {
   scene: Scene;
@@ -28,8 +29,18 @@ function api(): WebosApi {
 }
 
 /** The full scripting API lives on `window.webos`; `__app` is the devtools subset. */
-function webos(): { applyTheme: (presetId: string) => void } {
-  return (window as unknown as { webos: { applyTheme: (presetId: string) => void } }).webos;
+function webos(): {
+  applyTheme: (presetId: string) => void;
+  newTextDocument: () => void;
+} {
+  return (
+    window as unknown as {
+      webos: {
+        applyTheme: (presetId: string) => void;
+        newTextDocument: () => void;
+      };
+    }
+  ).webos;
 }
 
 function descendants(root: Entity): Entity[] {
@@ -580,5 +591,157 @@ describe('boot smoke', () => {
     document.dispatchEvent(new Event('pointerup'));
     expect(geometryWrites).toBe(0);
     scene.markDirty();
+  });
+});
+
+// ------------------------------------------------------------- WEB-0039
+// Context-menu routing + shortcut interception policy, driven through the
+// REAL document-level capture listeners main.ts installs.
+
+/** A cancelable key event dispatched at window level (shell policy layer). */
+function shellKey(
+  key: string,
+  mods: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {},
+): boolean {
+  const e = new KeyboardEvent('keydown', {
+    key,
+    ctrlKey: mods.ctrl ?? false,
+    shiftKey: mods.shift ?? false,
+    altKey: mods.alt ?? false,
+    cancelable: true,
+  });
+  document.dispatchEvent(e);
+  return e.defaultPrevented;
+}
+
+/** Right-click at scene coords via the document capture listener.
+ *  Dispatched ON the scene canvas: real pointer right-clicks carry the canvas
+ *  (or a projected mirror) as target, and the capture listener sits above
+ *  both. Selected by aria-label — module-init can leave stray 1x1 canvases. */
+function rightClickAt(sceneX: number, sceneY: number): boolean {
+  const canvas = document.querySelector<HTMLCanvasElement>(
+    'canvas[aria-label="VectoJS WebOS desktop"]',
+  );
+  if (!canvas) throw new Error('Missing WebOS canvas');
+  const e = new MouseEvent('contextmenu', {
+    clientX: sceneX,
+    clientY: sceneY,
+    bubbles: true,
+    cancelable: true,
+  });
+  canvas.dispatchEvent(e);
+  return e.defaultPrevented;
+}
+
+describe('context menu routing (issue #40)', () => {
+  it('shows the desktop menu on empty-desktop right-click and closes on Escape', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+
+    const area = shell.layout.workArea(shell.layout.primary().id);
+    const x = area.x + area.width - 24;
+    const y = area.y + area.height - 12;
+    expect(rightClickAt(x, y)).toBe(true);
+    expect(desktopContextMenuOpen()).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(desktopContextMenuOpen()).toBe(false);
+  });
+
+  it('routes a titlebar right-click to the state-aware window menu', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+
+    const barY = win.y + Math.floor(win.chrome.titlebarHeight / 2);
+    expect(rightClickAt(win.x + 60, barY)).toBe(true);
+    expect(desktopContextMenuOpen()).toBe(true);
+
+    // Restore is dead while restored; Maximize is available.
+    closeActiveContextMenu();
+    expect(desktopContextMenuOpen()).toBe(false);
+  });
+
+  it('leaves the Browser viewport un-prevented with no shell menu', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('browser');
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+
+    const clientY = win.y + win.chrome.titlebarHeight + 40;
+    expect(rightClickAt(win.x + 80, clientY)).toBe(false);
+    expect(desktopContextMenuOpen()).toBe(false);
+
+    // …but the SAME window's titlebar is still intercepted.
+    expect(rightClickAt(win.x + 40, win.y + 8)).toBe(true);
+    closeActiveContextMenu();
+    shell.windowManager.close(win);
+  });
+});
+
+describe('shortcut interception policy (issue #40)', () => {
+  it('prevents owned chords and dispatches Ctrl+S to Notes', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+
+    expect(shellKey('F5')).toBe(true); // refresh-desktop semantics
+    expect(shellKey('r', { ctrl: true })).toBe(true); // reload protection
+    expect(shellKey('p', { ctrl: true })).toBe(true); // print swallow
+    expect(shellKey('w', { ctrl: true })).toBe(false); // browser-reserved
+    expect(shellKey('R', { ctrl: true, shift: true })).toBe(false); // hard-reload valve
+
+    // Ctrl+S reaches the focused Notepad's surface and persists its document.
+    const notes = shell.open('notes');
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+    expect(notes.focused).toBe(true);
+    expect(shellKey('s', { ctrl: true })).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+    shell.windowManager.close(notes);
+  });
+
+  it('opens the focused surface menu from the ContextMenu key', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+
+    // No window focused → desktop menu at its work-area anchor.
+    expect(shellKey('ContextMenu')).toBe(true);
+    expect(desktopContextMenuOpen()).toBe(true);
+    closeActiveContextMenu();
+
+    // Files registers a surface → ITS menu opens instead.
+    const files = shell.open('files');
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+    expect(files.focused).toBe(true);
+    expect(shellKey('ContextMenu')).toBe(true);
+    expect(desktopContextMenuOpen()).toBe(true);
+    closeActiveContextMenu();
+    shell.windowManager.close(files);
+  });
+
+  it('New text document writes /docs and Notepad opens ON that document', async () => {
+    const { scene, shell, vfs } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    for (let i = 0; i < 3; i++) scene.step(16.67);
+
+    // The real desktop-menu action, exposed on the scripting API.
+    webos().newTextDocument();
+    await new Promise((r) => setTimeout(r, 30));
+    for (let i = 0; i < 4; i++) scene.step(16.67);
+
+    const notes = shell.windowManager.listByApp('notes').at(-1);
+    expect(notes).toBeDefined();
+    expect(notes!.title).toBe('New Document.txt - Notepad');
+
+    if (vfs) {
+      // The document exists on the VFS (empty body written by the action).
+      expect(await vfs.stat('/docs/New Document.txt')).not.toBeNull();
+    }
+    shell.windowManager.close(notes!);
   });
 });
