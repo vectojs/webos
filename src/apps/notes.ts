@@ -165,6 +165,36 @@ export const notesApp: AppDefinition = {
       area.scene?.markDirty();
     }
 
+    /**
+     * Show persisted content immediately when this document already exists
+     * (WEB-0035 defect A). After a reload the StorageVfs snapshot is restored
+     * before any window opens, but the editor used to present seed text that
+     * only an explicit Reload click replaced — the open path never read the
+     * VFS. The restore stands down if the user started typing while the read
+     * was in flight, so async loading can never clobber live edits.
+     */
+    function restorePersistedContent(): void {
+      const vfs = ctx.vfs;
+      if (!vfs) return;
+      void (async () => {
+        try {
+          const stat = await vfs.stat(path);
+          if (!stat) return; // new document — keep the welcome copy
+          const data = await vfs.read(path);
+          // Anything other than untouched seed text means the user typed
+          // during the read; their edits win.
+          if (area.value !== WELCOME_TEXT) return;
+          area.value = data;
+          guard.commit(data);
+          statusBase = `Document: ${path}  |  ${data.length} chars`;
+          refreshStatus();
+        } catch {
+          // Open stays on the seed text; read problems surface through the
+          // explicit Reload path, which reports them in the status line.
+        }
+      })();
+    }
+
     const toolBar = hstack(
       [
         btn(
@@ -199,6 +229,7 @@ export const notesApp: AppDefinition = {
     const root = new ClientRoot(new NotesLayout(status, area, toolBar), 16);
     rootHolder.root = root;
     refreshStatus();
+    restorePersistedContent();
     return root;
   },
 };

@@ -6,17 +6,19 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Entity } from '@vectojs/core';
 import type { VectoJSEvent } from '@vectojs/core';
-import { Button } from '@vectojs/ui';
+import { Button, TextArea } from '@vectojs/ui';
 import type { Scene } from '@vectojs/core';
-import type { DesktopShell } from '@vectojs/desktop';
+import type { DesktopShell, Vfs } from '@vectojs/desktop';
 import { DEFAULT_PRESET } from '../src/config';
 import { appTheme } from '../src/model/app-theme';
 import { findPreset } from '../src/model/themes';
 import { openConfirmDialog } from '../src/app/confirm-dialog';
+import { peekNextNoteWindowTitle } from '../src/apps/notes';
 
 interface WebosApi {
   scene: Scene;
   shell: DesktopShell;
+  vfs: Vfs | null;
   audit: () => Promise<{ kind: string; message: string }[]>;
   applyTheme: (presetId: string) => void;
 }
@@ -147,6 +149,34 @@ describe('boot smoke', () => {
     expect(second.title).not.toBe(first.title);
     shell.windowManager.close(first);
     shell.windowManager.close(second);
+  });
+
+  it('opens Notes showing persisted VFS content immediately after a reload', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    // WEB-0035 defect A: reproduce the post-reload state — the StorageVfs
+    // snapshot already holds the next deterministic note document, written by
+    // a pre-reload session (StorageVfs roundtrip covered in storage-vfs.test).
+    const docName = peekNextNoteWindowTitle().split(' - ')[0] ?? '';
+    if (!docName) throw new Error('Missing next note document name');
+    const persisted = 'Saved before the reload.\nSecond line survived.\n';
+    const vfs = api().vfs;
+    if (!vfs) throw new Error('Missing VFS');
+    await vfs.write(`/notes/${docName}`, persisted);
+
+    const win = shell.open('notes');
+    if (!win) throw new Error('Missing notes window');
+    expect(win.title).toBe(`${docName} - Notepad`);
+    // The restore is async (stat + read settle across microtasks); give the
+    // open path real loop turns between frames.
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      scene.step(16.67);
+    }
+    const area = descendants(win).find((entity): entity is TextArea => entity instanceof TextArea);
+    if (!area) throw new Error('Missing notes editor');
+    expect(area.value).toBe(persisted);
+    shell.windowManager.close(win);
   });
 
   it('opens a shell-modal confirm dialog focused and dismisses on Escape', async () => {
