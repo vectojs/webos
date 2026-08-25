@@ -427,12 +427,16 @@ describe('boot smoke', () => {
     const win = shell.open('calculator');
     const area = shell.layout.workArea(shell.layout.primary().id);
 
-    // Simulate the engine's unclamped drop on the drag path: maximize→restore
-    // arms the pending clamp, then the window is placed outside the work area.
+    // Simulate the engine's unclamped drop on the drag path: a live pointer
+    // gesture (pointerdown) is what defers the clamp to gesture end.
+    document.dispatchEvent(new Event('pointerdown'));
     win.maximize();
     win.restore();
     win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
-    document.dispatchEvent(new Event('pointerup'));
+    // Mid-gesture the window must still hang where the engine dropped it.
+    expect(win.x).toBe(area.x - 500);
+    expect(win.y).toBe(area.y - 500);
+    document.dispatchEvent(new Event('pointercancel'));
 
     const clamped = {
       x: win.x,
@@ -452,5 +456,51 @@ describe('boot smoke', () => {
     expect(win.y).toBe(before.y);
     scene.markDirty();
     shell.windowManager.close(win);
+  });
+
+  it('re-clamps a keyboard restore immediately instead of arming a stale pending clamp', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    const area = shell.layout.workArea(shell.layout.primary().id);
+
+    // No pointerdown → no gesture in flight. The restore's re-clamp must be
+    // consumed at arm time, so an arbitrary LATER pointerup anywhere cannot
+    // fire a stale clamp against whatever the window has become since
+    // (review LOW-1).
+    win.maximize();
+    win.restore();
+    win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
+    document.dispatchEvent(new Event('pointerup'));
+    expect(win.x).toBe(area.x - 500);
+    expect(win.y).toBe(area.y - 500);
+    scene.markDirty();
+    shell.windowManager.close(win);
+  });
+
+  it('drops the pending restore clamp when the window closes before gesture end', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const win = shell.open('calculator');
+    const area = shell.layout.workArea(shell.layout.primary().id);
+
+    document.dispatchEvent(new Event('pointerdown'));
+    win.maximize();
+    win.restore();
+    win.setGeometry(area.x - 500, area.y - 500, win.width, win.height);
+
+    // Close mid-gesture, then end the gesture: setGeometry must never run on
+    // the destroyed instance (review LOW-2).
+    let geometryWrites = 0;
+    const realSetGeometry = win.setGeometry.bind(win);
+    (win as unknown as { setGeometry: typeof win.setGeometry }).setGeometry = (...args) => {
+      geometryWrites += 1;
+      realSetGeometry(...args);
+    };
+    shell.windowManager.close(win);
+    expect(shell.windowManager.list()).not.toContain(win);
+    document.dispatchEvent(new Event('pointerup'));
+    expect(geometryWrites).toBe(0);
+    scene.markDirty();
   });
 });
