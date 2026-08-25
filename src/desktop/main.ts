@@ -18,7 +18,7 @@ import { findPreset, THEME_PRESETS } from '../model/themes';
 import { pushRecent } from '../model/start-menu-model';
 import { StorageVfs } from '../model/storage-vfs';
 import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
-import { clampPosition, fitGeometry } from '../model/window-geometry';
+import { fitGeometry } from '../model/window-geometry';
 import {
   DesktopClickCatcher,
   DesktopIcon,
@@ -30,6 +30,7 @@ import { WebOSTaskbar } from './taskbar';
 import { openY2KProgramMenu, WebOSStartMenu } from './start-menu';
 import { showDesktopContextMenu } from './context-menu';
 import { showBootSplash } from './boot-splash';
+import { clampWindowsOnEvent, clampWindowsToArea, refitMaximized } from './window-refit';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing');
@@ -179,6 +180,10 @@ function fit(): void {
   const vp = viewportCssSize();
   scene.resize(vp.w, vp.h);
   shell.resize(vp.w, vp.h);
+  // Engine gap E1 (issue #30): DesktopShell.resize moves the work area but
+  // leaves maximized windows in their stale pre-shrink box — re-apply
+  // maximize so they track the new work area until the engine refits them.
+  refitMaximized(shell.windowManager.list());
   recenterWindowsPreservingOffset(vp.w, vp.h);
   clampWindowsToWorkArea();
   // fit() runs before the icon grid exists at boot (TDZ guard).
@@ -246,21 +251,16 @@ function workArea(): { x: number; y: number; width: number; height: number } {
 }
 
 /**
- * Pull any window whose box escapes the work area back inside — without
- * re-positioning windows that are already inside (audit #25 P2-B). Runs on
- * every viewport resize: the aspect-changing path skips re-centering by
- * design (measured +349,+129 shift), so clamping is the only correction a
- * narrow viewport gets.
+ * Pull any window whose box escapes the work area back inside — shrinking
+ * oversize boxes to the area, then pinning the top-left (issue #30: the old
+ * position-only clamp left windows taller/wider than a shrunken work area
+ * stranded past the bottom/right forever). Without re-positioning windows
+ * that are already inside (audit #25 P2-B). Runs on every viewport resize:
+ * the aspect-changing path skips re-centering by design (measured +349,+129
+ * shift), so clamping is the only correction a narrow viewport gets.
  */
 function clampWindowsToWorkArea(): void {
-  const area = workArea();
-  for (const win of shell.windowManager.list()) {
-    if (win.maximized || win.minimized) continue;
-    const pos = clampPosition(win.x, win.y, win.width, win.height, area);
-    if (pos.x !== win.x || pos.y !== win.y) {
-      win.setGeometry(pos.x, pos.y, win.width, win.height);
-    }
-  }
+  clampWindowsToArea(shell.windowManager.list(), workArea());
 }
 
 function snapFocused(dir: 'left' | 'right' | 'top' | 'bottom'): void {
@@ -526,6 +526,13 @@ document.addEventListener(
 installWebosTaskbar();
 
 fit();
+// Maximize/restore/minimize/un-minimize emit "state": engine gap E2 (issue
+// #30) makes restore() replay the stale pre-maximize box unclamped, so those
+// events re-run the shrink clamp — a no-op for in-bounds boxes. The gate
+// excludes open/focus/close: engine drag parks windows mostly off-screen and
+// an unrelated event must not yank them back (PX-0159). Taskbar entries
+// reflow via the bar's own wm subscription.
+shell.windowManager.on((e) => clampWindowsOnEvent(e, shell.windowManager.list(), workArea()));
 scene.start();
 // Era splash over the first paint (spec §4 #8): non-interactive, audit-safe.
 // ?nosplash skips the ~1.12s mark+fade for tests/benchmarks (query-param

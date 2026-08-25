@@ -79,6 +79,12 @@
   minute string changes, and taskbar entries truncate at the entries-host
   edge instead of spilling toward the clock. (The WebOS-owned taskbar from
   WEB-0034 now provides these guarantees directly.)
+- Windows no longer strand outside the reachable work area after viewport
+  or DPR changes (#30): re-clamping shrinks oversize windows into the work
+  area instead of adjusting position only, maximized windows refit when
+  the work area changes, and a maximize→restore replays through the clamp.
+  Engine gaps are filed upstream (DesktopShell.resize maximized refit,
+  Window.restore unclamped replay) and compensated app-side.
 
 ## 0.1.0 — 2026-08-15
 
