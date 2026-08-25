@@ -6,17 +6,19 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Entity } from '@vectojs/core';
 import type { VectoJSEvent } from '@vectojs/core';
-import { Button } from '@vectojs/ui';
+import { Button, TextArea } from '@vectojs/ui';
 import type { Scene } from '@vectojs/core';
-import type { DesktopShell } from '@vectojs/desktop';
+import type { DesktopShell, Vfs } from '@vectojs/desktop';
 import { DEFAULT_PRESET } from '../src/config';
 import { appTheme } from '../src/model/app-theme';
 import { findPreset } from '../src/model/themes';
 import { openConfirmDialog } from '../src/app/confirm-dialog';
+import { peekNextNoteWindowTitle } from '../src/apps/notes';
 
 interface WebosApi {
   scene: Scene;
   shell: DesktopShell;
+  vfs: Vfs | null;
   audit: () => Promise<{ kind: string; message: string }[]>;
   applyTheme: (presetId: string) => void;
 }
@@ -149,6 +151,34 @@ describe('boot smoke', () => {
     shell.windowManager.close(second);
   });
 
+  it('opens Notes showing persisted VFS content immediately after a reload', async () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    // WEB-0035 defect A: reproduce the post-reload state — the StorageVfs
+    // snapshot already holds the next deterministic note document, written by
+    // a pre-reload session (StorageVfs roundtrip covered in storage-vfs.test).
+    const docName = peekNextNoteWindowTitle().split(' - ')[0] ?? '';
+    if (!docName) throw new Error('Missing next note document name');
+    const persisted = 'Saved before the reload.\nSecond line survived.\n';
+    const vfs = api().vfs;
+    if (!vfs) throw new Error('Missing VFS');
+    await vfs.write(`/notes/${docName}`, persisted);
+
+    const win = shell.open('notes');
+    if (!win) throw new Error('Missing notes window');
+    expect(win.title).toBe(`${docName} - Notepad`);
+    // The restore is async (stat + read settle across microtasks); give the
+    // open path real loop turns between frames.
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      scene.step(16.67);
+    }
+    const area = descendants(win).find((entity): entity is TextArea => entity instanceof TextArea);
+    if (!area) throw new Error('Missing notes editor');
+    expect(area.value).toBe(persisted);
+    shell.windowManager.close(win);
+  });
+
   it('opens a shell-modal confirm dialog focused and dismisses on Escape', async () => {
     const { scene, shell } = api();
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
@@ -236,6 +266,54 @@ describe('boot smoke', () => {
     shell.toggleStartMenu(); // wrapper close path
     for (let i = 0; i < 2; i++) scene.step(16.67);
     expect(document.activeElement).toBe(opener);
+  });
+
+  it('restores opener focus when a click outside closes the menu', async () => {
+    const { scene, shell } = api();
+    const opener = parkFocusOnTaskbarButton(scene, shell);
+    openMenuThenDropFocusToBody(scene, shell);
+
+    // WEB-0035 defect B: outside-click dismissal runs through the same
+    // closeStartMenu path. Empty-desktop coordinates (no menu, taskbar or
+    // Start-tile hit), so the capture-phase pointerdown observer must dismiss
+    // AND the opener must get focus back.
+    document.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1500, clientY: 300 }));
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('lands focus on the rebuilt Start tile when a theme switch strands the opener', async () => {
+    const { scene, shell } = api();
+    const opener = parkFocusOnTaskbarButton(scene, shell);
+    openMenuThenDropFocusToBody(scene, shell);
+
+    // Issue #36: applyTheme destroys the bar owning the captured opener
+    // BEFORE closeStartMenu restores it, so the immediate .focus() hits a
+    // detached node and silently no-ops — the restore must fall back to the
+    // rebuilt bar's live Start tile.
+    webos().applyTheme('aqua');
+    expect(opener.isConnected).toBe(false);
+    // The deferred fallback targets the rebuilt bar's mirror, which only
+    // exists after an a11y sync pass. Under happy-dom the engine's rAF tick
+    // (the only thing that runs syncA11y) never advances, so replay that one
+    // pass by hand before the 34ms fallback timer fires — timers cannot
+    // interleave with this synchronous call.
+    const engineScene = scene as unknown as {
+      root: Entity;
+      syncA11y: (root: Entity) => void;
+    };
+    engineScene.syncA11y(engineScene.root);
+    const newStart = descendants(shell.taskbar!).find(
+      (entity) => entity.getA11yAttributes().role === 'button',
+    );
+    if (!newStart) throw new Error('Missing rebuilt taskbar button');
+    expect(document.getElementById(newStart.id)).not.toBeNull();
+    // Let the fallback timer fire; nothing else may take focus meanwhile.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(document.activeElement === document.getElementById(newStart.id)).toBe(true);
+    // Restore so later suites' boot-theme assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    engineScene.syncA11y(engineScene.root);
   });
 
   it('projects disabled browser history controls and focused window state', async () => {

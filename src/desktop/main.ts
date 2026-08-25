@@ -508,10 +508,38 @@ function closeStartMenu(): void {
   // leave DOM focus stranded on body.
   if (hadMenu && openerFocus) {
     const active = document.activeElement;
-    if (!active || active === document.body) openerFocus.focus?.();
+    if (!active || active === document.body) {
+      // Issue #36: a theme switch destroys and rebuilds the taskbar while
+      // the menu is open, so a captured opener can already be disconnected —
+      // focus() on a detached node is a silent no-op. Fall back to the live
+      // bar's Start tile; its mirror only exists after the next a11y sync
+      // pass, so the actual .focus() is deferred past it.
+      if (openerFocus.isConnected) {
+        openerFocus.focus?.();
+      } else {
+        const startTile = chrome.taskbar?.startButton;
+        if (startTile) deferStartFocus(startTile.id);
+      }
+    }
     openerFocus = null;
   }
   scene.markDirty();
+}
+
+/**
+ * Issue #36 companion: re-focus the Start mirror one sync pass out. The
+ * rebuilt taskbar's mirrors are projected by the a11y sync that runs during
+ * the next frame, so an immediate lookup would miss. Yields if anything else
+ * took focus meanwhile, matching the immediate path's "when nothing else took
+ * it" contract.
+ */
+function deferStartFocus(mirrorId: string): void {
+  window.setTimeout(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      document.getElementById(mirrorId)?.focus();
+    }
+  }, 34);
 }
 
 function openStartMenu(): void {
