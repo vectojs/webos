@@ -84,4 +84,42 @@ describe('paint toolbar', () => {
     expect(p.currentColor).toBe(before);
     expect(p.strokes.length).toBe(2);
   });
+
+  it('never counts sub-2-point strokes that rendering skips (review PX-0227)', () => {
+    const root = new PaintRoot();
+    press(root, 220, 220); // pointerdown without a move → single-point dot
+    root.emit('pointerup', { nativeEvent: {} } as never);
+    expect(internals(root).strokes.length).toBe(3); // kept in raw history...
+    expect(root.strokeCount).toBe(2); // ...but invisible, so menus stay honest
+  });
+});
+
+describe('paint undo + clear API (WEB-0039, DEC-0025)', () => {
+  it('undo pops the last completed stroke and reports emptiness', () => {
+    const root = new PaintRoot();
+    expect(root.strokeCount).toBe(2);
+    expect(root.undoStroke()).toBe(true);
+    expect(root.strokeCount).toBe(1);
+    expect(root.undoStroke()).toBe(true);
+    expect(root.strokeCount).toBe(0);
+    // Empty canvas: undo is a no-op that reports false.
+    expect(root.undoStroke()).toBe(false);
+  });
+
+  it('clearAll empties the canvas exactly like the toolbar button', () => {
+    const root = new PaintRoot();
+    // Draw a real (multi-point) stroke on top of the seeds.
+    press(root, 200, 200);
+    root.emit('pointermove', {
+      nativeEvent: {},
+      localX: 240,
+      localY: 240,
+    } as never);
+    root.emit('pointerup', { nativeEvent: {} } as never);
+    expect(root.strokeCount).toBe(3);
+    expect(root.clearAll()).toBe(true);
+    expect(root.strokeCount).toBe(0);
+    // Clearing an already-empty canvas reports false.
+    expect(root.clearAll()).toBe(false);
+  });
 });

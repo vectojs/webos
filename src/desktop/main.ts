@@ -3,7 +3,7 @@
  */
 
 import { Scene, type Entity } from '@vectojs/core';
-import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
+import { DesktopShell, DesktopWindow } from '@vectojs/desktop';
 import {
   buildConfig,
   DEFAULT_PRESET,
@@ -12,7 +12,11 @@ import {
   setActiveThemeId,
   svgDataUrl,
 } from '../config';
-import { peekNextNoteWindowTitle } from '../apps/notes';
+import {
+  peekNextNoteWindowTitle,
+  peekPendingNoteWindowTitle,
+  requestNoteDocument,
+} from '../apps/notes';
 import { exposeTopResizeRim } from '../app/window-utils';
 import { appTheme, setAppTheme } from '../model/app-theme';
 import { findPreset, THEME_PRESETS } from '../model/themes';
@@ -20,6 +24,17 @@ import { pushRecent } from '../model/start-menu-model';
 import { StorageVfs } from '../model/storage-vfs';
 import { SEED_DIRS, SEED_DOCS } from '../model/seed-docs';
 import { clampPosition, fitGeometry } from '../model/window-geometry';
+import { nextAvailableName } from '../model/vfs-names';
+import { resolveOwnedShortcut } from '../model/shortcut-policy';
+import { classifyRightClick, titlebarRect } from './context-routing';
+import {
+  buildTitlebarContextMenuItems,
+  closeActiveContextMenu,
+  desktopContextMenuOpen,
+  showDesktopContextMenu,
+  showSurfaceMenu,
+  windowSurface,
+} from './context-menu';
 import {
   DesktopClickCatcher,
   DesktopIcon,
@@ -29,7 +44,6 @@ import {
 } from './icons';
 import { WebOSTaskbar } from './taskbar';
 import { openY2KProgramMenu, WebOSStartMenu } from './start-menu';
-import { showDesktopContextMenu } from './context-menu';
 import { showBootSplash } from './boot-splash';
 import { clampWindowsOnEvent, clampWindowsToArea, refitMaximized } from './window-refit';
 
@@ -104,7 +118,10 @@ shell.open = (appId, opts) => {
   pushRecent(recentAppIds, appId);
   if (!opts?.title) {
     if (appId === 'notes') {
-      return baseOpen(appId, { ...opts, title: peekNextNoteWindowTitle() });
+      // A pending open-with request (New text document) names the window
+      // after ITS document; otherwise the deterministic note-N default.
+      const title = peekPendingNoteWindowTitle() ?? peekNextNoteWindowTitle();
+      return baseOpen(appId, { ...opts, title });
     }
     const app = boot.config.apps?.find((a) => a.id === appId);
     const openCount = shell.windowManager.listByApp(appId).length + 1;
@@ -199,48 +216,218 @@ if (window.visualViewport) {
   window.addEventListener('resize', fit);
 }
 
-// Right-click never opens the browser's "Save image as…" menu on a desktop.
-canvas.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  // Desktop context menu on right-click of EMPTY desktop only (spec §4 #7).
-  // Windows, the taskbar and icons own their own surfaces; over them we just
-  // suppress the browser menu as before.
-  const pt = scene.clientToScene(e.clientX, e.clientY);
-  for (const win of shell.windowManager.list()) {
-    if (pt.x >= win.x && pt.x <= win.x + win.width && pt.y >= win.y && pt.y <= win.y + win.height) {
-      return;
+/**
+ * Global right-click interception (WEB-0039 / issue #40).
+ *
+ * The listener is DOCUMENT-LEVEL CAPTURE on purpose: the a11y projection
+ * mounts interactive mirrors (Buttons, the Notes textarea, Inputs) ABOVE the
+ * canvas, so a canvas-only listener never sees right-clicks on them and the
+ * native browser menu leaked through on every projected surface. Capture also
+ * runs before any app-level handler.
+ *
+ * Policy: `contextmenu` is preventDefault'd across every shell surface — the
+ * canvas and everything under `[data-vecto-a11y-root]`. Foreign DOM (the
+ * ?debug devtools panel, future DOM portals) is NOT ours to muzzle and keeps
+ * native behavior. Inside shell surfaces the ONE deliberate exception is the
+ * Browser app viewport (DEC-0026): it simulates third-party page content, so
+ * the native menu stays there — which also proves interception is policy,
+ * not accident. Zone routing itself is pure (context-routing.ts) and tested.
+ */
+document.addEventListener(
+  'contextmenu',
+  (e) => {
+    const target = e.target as Element | null;
+    const onShellSurface = target === canvas || !!target?.closest?.('[data-vecto-a11y-root]');
+    if (!onShellSurface) return;
+
+    const pt = scene.clientToScene(e.clientX, e.clientY);
+    const tb = chrome.taskbar ?? shell.taskbar;
+    const taskbarRect = tb ? { x: tb.x, y: tb.y, width: tb.width, height: tb.height } : null;
+    const iconRects = desktopIcons.map((icon) => ({
+      x: icon.x,
+      y: icon.y,
+      width: icon.width,
+      height: icon.height,
+    }));
+    // Visual stacking order, TOPMOST FIRST (review PX-0222): restack()
+    // reorders only scene.overlayRoot.children (focused window moves to its
+    // end), while windowManager.list() stays CREATION order — classifying
+    // over creation order let the earliest-created window capture clicks
+    // aimed at windows stacked visually above it.
+    const stacked = scene.overlayRoot.children
+      .filter((c): c is DesktopWindow => c instanceof DesktopWindow)
+      .reverse();
+    const zone = classifyRightClick(pt, stacked, taskbarRect, iconRects);
+
+    // Any right-click dismisses open launcher chrome first, like a real OS.
+    closeStartMenu();
+
+    switch (zone.kind) {
+      case 'browser-viewport':
+        // Deliberate passthrough — no preventDefault (DEC-0026).
+        return;
+      case 'desktop-icon':
+        // Icon menus are deferred (issue #40); suppress as before.
+        e.preventDefault();
+        return;
+      case 'taskbar':
+        // The bar owns its whole surface; suppress.
+        e.preventDefault();
+        return;
+      case 'titlebar':
+        e.preventDefault();
+        showTitlebarMenu(zone.window, pt.x, pt.y);
+        return;
+      case 'window-client':
+        e.preventDefault();
+        windowSurface(zone.window.windowId)?.openContextMenu(scene, pt.x, pt.y);
+        return;
+      case 'desktop':
+        e.preventDefault();
+        showDesktopContextMenu(scene, pt.x, pt.y, desktopMenuActions());
+        return;
     }
-  }
-  const tb = chrome.taskbar ?? shell.taskbar;
-  if (tb && pt.x >= tb.x && pt.x <= tb.x + tb.width && pt.y >= tb.y) return;
-  for (const icon of desktopIcons) {
-    if (
-      pt.x >= icon.x &&
-      pt.x <= icon.x + icon.width &&
-      pt.y >= icon.y &&
-      pt.y <= icon.y + icon.height
-    ) {
-      return;
-    }
-  }
-  showDesktopContextMenu(scene, pt.x, pt.y, {
+  },
+  true,
+);
+
+/** Actions behind the empty-desktop context menu (issue #40 inventory). */
+function desktopMenuActions() {
+  return {
     refresh: () => {
       fit();
+      if (iconsReady) layoutIcons();
       scene.markDirty();
     },
+    newDocument: () => createNewTextDocument(),
+    changeWallpaper: () => cycleWallpaper(),
     openSettings: () => void shell.open('settings'),
+    openTaskManager: () => void shell.open('sysmon'),
     openAbout: () => void shell.open('about'),
-  });
-});
+  };
+}
+
+/** Titlebar chrome menu — state-aware verbs from buildTitlebarContextMenuItems. */
+function showTitlebarMenu(win: DesktopWindow, x: number, y: number): void {
+  showSurfaceMenu(
+    scene,
+    x,
+    y,
+    buildTitlebarContextMenuItems(
+      { minimized: win.minimized, maximized: win.maximized },
+      {
+        minimize: () => win.minimize(),
+        maximize: () => {
+          if (!win.maximized) win.maximize();
+        },
+        restore: () => {
+          if (win.minimized) win.restoreFromMinimized();
+          else if (win.maximized) win.restore();
+        },
+        close: () => shell.windowManager.close(win),
+      },
+    ),
+  );
+}
 
 /**
- * Swallow browser-native shortcuts that a desktop would own. Editable
- * targets (the Notes TextArea shadow input) keep full native editing keys.
+ * "New text document" (issue #40): write an EMPTY `/docs/New Document.txt`
+ * (collision-suffixed via nextAvailableName) and open Notepad ON that
+ * document through the pending-open channel in apps/notes.ts.
  */
-// Browser-native bindings a desktop owns: Save/Print/Open/Reload/Bookmark.
-const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'r', 'g', 'd']);
+function createNewTextDocument(): void {
+  const vfs = boot.config.vfs;
+  if (!vfs) {
+    void shell.open('notes');
+    return;
+  }
+  void (async () => {
+    let existing: string[] = [];
+    try {
+      existing = (await vfs.list('/docs')).map((entry) => entry.name);
+    } catch {
+      // /docs missing → the base name is free; mkdir comes with write().
+    }
+    const path = `/docs/${nextAvailableName(existing, 'New Document.txt')}`;
+    try {
+      await vfs.write(path, '');
+    } catch {
+      // Still open Notes: the status line reports the unwritable document.
+    }
+    requestNoteDocument(path);
+    void shell.open('notes');
+  })();
+}
 
-/** Snap/tiling gestures — Ctrl+Alt+Arrow snaps the focused window, Ctrl+Alt+G tiles. */
+/** Cycle the era presets — wallpaper AND chrome move together (one theme). */
+function cycleWallpaper(): void {
+  const index = THEME_PRESETS.findIndex((preset) => preset.id === getActiveThemeId());
+  const next = THEME_PRESETS[(index + 1) % THEME_PRESETS.length] ?? DEFAULT_PRESET;
+  applyTheme(next.id);
+}
+
+/**
+ * ContextMenu key / Shift+F10 (owned chord): open the focused surface's menu
+ * at its preferred anchor — surfaces own their keyboard anchor
+ * (keyboardAnchor, review PX-0223); the shell default anchors just inside
+ * the client area below the titlebar. With no surface (or over a Browser
+ * window, whose viewport passes through by policy) fall back to the desktop
+ * menu anchored in the work area.
+ */
+function openKeyboardContextMenu(): void {
+  // Same dismissal discipline as the right-click router: launcher chrome
+  // closes before a surface menu opens (review PX-0224).
+  closeStartMenu();
+  const win = focusedWindow();
+  if (win && !win.minimized && win.appId !== 'browser') {
+    const surface = windowSurface(win.windowId);
+    if (surface) {
+      const anchor =
+        surface.keyboardAnchor?.() ??
+        (() => {
+          const bar = titlebarRect(win);
+          return {
+            x: win.x + Math.min(48, win.width / 2),
+            y: bar.y + bar.height + 24,
+          };
+        })();
+      surface.openContextMenu(scene, anchor.x, anchor.y);
+      return;
+    }
+  }
+  const area = workArea();
+  showDesktopContextMenu(
+    scene,
+    area.x + area.width * 0.3,
+    area.y + area.height * 0.3,
+    desktopMenuActions(),
+  );
+}
+
+/**
+ * GLOBAL SHORTCUT INTERCEPTION POLICY (WEB-0039 / issue #40) — the executable
+ * half lives in src/model/shortcut-policy.ts (`SHORTCUT_POLICY` is the
+ * documentation-grade table; this block is the contract summary).
+ *
+ * OWNED (preventDefault, dispatched before the editable bail-out, PX-0079):
+ *   Ctrl+S        save the focused Notepad document via its window surface
+ *   Ctrl+P/O/G/D  swallow the browser dialog/finding/bookmark binding
+ *   Ctrl+R        swallow EVERYWHERE — reload destroys unsaved state (DEC-0028)
+ *   F5            desktop refresh semantics outside editables; inert inside
+ *   F12           swallowed — a desktop has no devtools chrome
+ *   ContextMenu /
+ *   Shift+F10     open OUR context menu for the focused surface
+ *
+ * PASSTHROUGH (deliberately untouched): F11 native fullscreen, PrintScreen,
+ *   Ctrl+A/X/C/V inside editables (native text editing), and Ctrl+Shift+R as
+ *   the escape-hatch hard reload (the shift exclusion IS the DEC-0028 valve).
+ *
+ * IMPOSSIBLE (do not fight): Ctrl+W/T/N and Shift variants are browser-
+ *   reserved — engines IGNORE preventDefault on them (the engine config's
+ *   Control+w close-focused mapping only fires where an engine permits);
+ *   Alt+Tab / Win-chords are OS-reserved. Claiming them would only make the
+ *   shortcut documentation lie.
+ */
 const SNAP_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 
 function focusedWindow(): DesktopWindow | null {
@@ -349,22 +536,35 @@ document.addEventListener('keydown', (e) => {
     !!target &&
     (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
-  // Browser-native chords a desktop owns are swallowed BEFORE the editable
-  // bail-out (review PX-0079): none of s/p/o/r/g/d is a text-editing key, so
-  // gating them on focus bought nothing — it only leaked Ctrl+P through to
-  // the native print dialog when typing in Notes/Terminal.
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && BROWSER_SHORTCUT_KEYS.has(e.key.toLowerCase())) {
+  // Owned chords resolve BEFORE the editable bail-out: none of their keys
+  // produce text, and F5/Ctrl+R used to leak through while typing and reload
+  // the page out from under unsaved Notes state (DEC-0028).
+  const decision = resolveOwnedShortcut(e, editable);
+  if (decision.preventDefault) {
     e.preventDefault();
+    switch (decision.action) {
+      case 'save-focused': {
+        const win = focusedWindow();
+        if (win) windowSurface(win.windowId)?.handleShellChord?.('Control+S');
+        break;
+      }
+      case 'refresh-desktop':
+        fit();
+        if (iconsReady) layoutIcons();
+        scene.markDirty();
+        break;
+      case 'open-context-menu':
+        openKeyboardContextMenu();
+        break;
+      case 'swallow':
+      case undefined:
+        break;
+    }
+    return;
   }
 
   if (editable) return;
-  if (e.key === 'F5' || e.key === 'F12') {
-    e.preventDefault();
-    return;
-  }
-  // The ShortcutRouter preventDefaults its own mapped chords; this only
-  // swallows the browser's default bindings, never editable input.
-  // Snap/tiling gestures (Ctrl+Alt — disjoint from the browser shortcuts above).
+  // Snap/tiling gestures (Ctrl+Alt — disjoint from the owned chords above).
   if (e.ctrlKey && e.altKey) {
     if (SNAP_KEYS.has(e.key)) {
       snapFocused(e.key.slice(5).toLowerCase() as 'left' | 'right' | 'top' | 'bottom');
@@ -581,9 +781,17 @@ function toggleStartMenu(): void {
 shell.toggleStartMenu = toggleStartMenu;
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && (startMenu || y2kMenu)) {
+  if (e.key !== 'Escape') return;
+  if (startMenu || y2kMenu) {
     e.preventDefault();
     closeStartMenu();
+    return;
+  }
+  // Context menus take focus themselves, but keep an Escape safety net for
+  // engines where the hotspot mirror never received it (issue #40).
+  if (desktopContextMenuOpen()) {
+    e.preventDefault();
+    closeActiveContextMenu();
   }
 });
 document.addEventListener(
@@ -764,6 +972,8 @@ const webosApi = {
   fit,
   applyTheme,
   toggleDevtools,
+  // Desktop-menu action exposed for the scripting API (tests, power users).
+  newTextDocument: createNewTextDocument,
   audit: async () => {
     const { auditScene } = await import('@vectojs/devtools/headless');
     return auditScene(scene, { includeOverlay: true });

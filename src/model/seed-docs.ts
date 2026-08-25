@@ -8,9 +8,9 @@
 
 export const SEED_DOCS: Readonly<Record<string, string>> = {
   '/docs/readme.txt':
-    'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Ctrl+Alt+T:    New Terminal\n  • Ctrl+N:        New Notepad\n  • Ctrl+W:        Close Focused Window\n  • Ctrl+Space:    Toggle Start Menu\n',
+    'Welcome to VectoJS WebOS!\n\nA complete Zero-DOM Canvas operating environment.\nShortcuts:\n  • Right-click:   Context menus on desktop, files, editor, canvas\n  • Ctrl+S:        Save Notepad document (focused)\n  • F5:            Refresh desktop layout & icons\n  • Ctrl+Space:    Toggle Start Menu\n',
   '/docs/shortcuts.txt':
-    'Keybindings:\n  • Ctrl+Space  - Start Menu\n  • Ctrl+N      - Notes\n  • Ctrl+Alt+T  - Terminal\n  • Ctrl+W      - Close Window\n',
+    'Keybindings:\n  • Right-click    - Surface menus (Browser viewport keeps native)\n  • Ctrl+S         - Save focused document\n  • F5             - Refresh desktop\n  • Ctrl+Space     - Start Menu\n  • Ctrl+W/T/N     - Reserved by host browser (not interceptable)\n',
 };
 
 /** Directories every WebOS install expects, seeded at boot. */
