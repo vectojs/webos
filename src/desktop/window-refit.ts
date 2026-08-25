@@ -20,7 +20,7 @@
  * the decisions without instantiating a Scene (taskbar-guard pattern).
  */
 
-import { type Area, clampRect } from "../model/window-geometry";
+import { type Area, clampRect } from '../model/window-geometry';
 
 /** Minimal shape of @vectojs/desktop 0.7.0 `DesktopWindow` used here. */
 export interface RefitWindow {
@@ -53,10 +53,7 @@ export function refitMaximized(windows: Iterable<RefitWindow>): void {
  * windows (refitMaximized owns those — setGeometry would demote them) and
  * minimized ones (their un-minimize emits "state", which re-runs this).
  */
-export function clampWindowsToArea(
-  windows: Iterable<RefitWindow>,
-  area: Area,
-): void {
+export function clampWindowsToArea(windows: Iterable<RefitWindow>, area: Area): void {
   for (const win of windows) {
     if (win.maximized || win.minimized) continue;
     const next = clampRect(win.x, win.y, win.width, win.height, area);
@@ -69,4 +66,25 @@ export function clampWindowsToArea(
       win.setGeometry(next.x, next.y, next.width, next.height);
     }
   }
+}
+
+/** Window-manager stream event types (@vectojs/desktop 0.7.0 WindowManagerListener). */
+export type WmEventType = 'open' | 'close' | 'focus' | 'state';
+
+/**
+ * Gate the E2 shrink clamp behind "state" events ONLY (review PX-0159).
+ * Engine drag deliberately parks windows mostly off-screen (titlebar + 48px
+ * of frame stay visible — Window.clampMovePosition), so a focus/open/close
+ * event re-running the clamp would yank user-parked windows back on-screen;
+ * open is already engine-clamped at open time. Restore/un-minimize emit
+ * "state" (Window.notifyState), which is exactly where the stale-box replay
+ * needs correcting.
+ */
+export function clampWindowsOnEvent(
+  event: { type: WmEventType },
+  windows: Iterable<RefitWindow>,
+  area: Area,
+): void {
+  if (event.type !== 'state') return;
+  clampWindowsToArea(windows, area);
 }

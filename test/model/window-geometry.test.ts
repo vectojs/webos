@@ -90,6 +90,21 @@ describe('clampRect', () => {
       height: 1,
     });
   });
+
+  it('floors to a 1px box pinned at area.y when the work area has zero height (DEC-0021)', () => {
+    // Degenerate-area edge (review PX-0160): a zero-height area cannot hold
+    // any box, so the floor caps the height at 1 and clampPosition pins the
+    // top-left at the area origin — the documented deviation from the engine,
+    // whose applyGeom re-floors with its own per-window minimums while keeping
+    // the pinned top-left (same output shape, overflow off bottom/right only).
+    const flat = { x: 0, y: 40, width: 568, height: 0 };
+    expect(clampRect(72, 8, 540, 380, flat)).toEqual({
+      x: 28,
+      y: 40,
+      width: 540,
+      height: 1,
+    });
+  });
 });
 
 describe('fitGeometry', () => {

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   type RefitWindow,
+  clampWindowsOnEvent,
   clampWindowsToArea,
   refitMaximized,
 } from '../../src/desktop/window-refit';
@@ -147,6 +148,34 @@ describe('clampWindowsToArea', () => {
   });
 });
 
+describe('clampWindowsOnEvent', () => {
+  // Parked shape Window.clampMovePosition permits: x down to
+  // area.x - width + 48 leaves just the titlebar + 48px of frame on-screen.
+  const PARKED_X = SHRUNK_AREA.x - 300 + 48; // -252 for a 300-wide window
+
+  it('must NOT move a parked window on open/close/focus events (review PX-0159)', () => {
+    const parked = stubWindow({ x: PARKED_X, y: 120, width: 300, height: 200 });
+    for (const type of ['open', 'close', 'focus'] as const) {
+      clampWindowsOnEvent({ type }, [parked], SHRUNK_AREA);
+    }
+    expect(parked.geometryCalls).toHaveLength(0);
+    expect(parked.x).toBe(PARKED_X);
+    expect(parked.y).toBe(120);
+  });
+
+  it('re-clamps on "state" events (restore replays the stale box unclamped, E2)', () => {
+    const restored = stubWindow({ x: 72, y: 8, width: 540, height: 380 });
+    clampWindowsOnEvent({ type: 'state' }, [restored], SHRUNK_AREA);
+    expect(restored.geometryCalls).toEqual([{ x: 28, y: 40, width: 540, height: 315 }]);
+  });
+
+  it('"state" on an in-bounds window is a verified no-op (no yank, no loop)', () => {
+    const inside = stubWindow({ x: 100, y: 100, width: 300, height: 200 });
+    clampWindowsOnEvent({ type: 'state' }, [inside], SHRUNK_AREA);
+    expect(inside.geometryCalls).toHaveLength(0);
+  });
+});
+
 /**
  * Dist-contract drift guard (taskbar-guard.dist.test.ts pattern): the
  * compensations above lean on three private engine behaviors. Assert them
@@ -185,5 +214,12 @@ describe('window-refit ↔ @vectojs/desktop dist contract', () => {
 
   it('DisplayLayout.clampRect keeps the shrink-then-pin shape the math mirrors', () => {
     expect(bundle.includes('clampRect(x, y, w, h, displayId) {')).toBe(true);
+  });
+
+  it('drag still permits mostly-offscreen parking (why focus must not re-clamp, PX-0159)', () => {
+    // Window.clampMovePosition: only titlebar + 48px of frame must stay
+    // visible. If this drifts, the PX-0159 gate may be relaxable; until then
+    // open/close/focus events must keep skipping clampWindowsToArea.
+    expect(bundle.includes('area.x - this.width + 48')).toBe(true);
   });
 });
