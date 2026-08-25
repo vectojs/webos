@@ -130,9 +130,16 @@ export function showSurfaceMenu(
  * pointer use is unaffected.
  */
 function focusFirstMenuItem(): void {
-  const root = document.querySelector('[data-vecto-a11y-root]');
-  if (!root) return;
-  const items = root.querySelectorAll('[role="menuitem"]:not([aria-disabled="true"])');
+  if (!activeMenu) return;
+  // Scope to THIS menu's projection, not the first [data-vecto-a11y-root]:
+  // projected elements carry their entity id as DOM id (engine contract), so
+  // getElementById pins our own role="menu" subtree. With another menu
+  // projected (e.g. the Y2K program start menu), its role="menuitem" mirrors
+  // can precede ours in DOM order and steal initial focus (review PX-0224).
+  const host =
+    document.getElementById(activeMenu.id) ?? document.querySelector('[data-vecto-a11y-root]');
+  if (!host) return;
+  const items = host.querySelectorAll('[role="menuitem"]:not([aria-disabled="true"])');
   const anchor = Array.from(items).find((el) => el.getAttribute('tabindex') === '0') ?? items[0];
   if (anchor instanceof HTMLElement) anchor.focus({ preventScroll: true });
 }
@@ -157,6 +164,13 @@ export function showDesktopContextMenu(
 export interface WindowSurface {
   /** Show this surface's context menu at the scene point of the click. */
   openContextMenu(scene: Scene, x: number, y: number): void;
+  /**
+   * Preferred anchor in scene coords for the ContextMenu-key path. Surfaces
+   * whose client area starts with inert chrome (Notepad's status line sits
+   * exactly at the titlebar+24 default) return their real target region
+   * instead; unimplemented → the shell default anchor applies.
+   */
+  keyboardAnchor?(): { x: number; y: number };
   /**
    * Handle a shell-owned chord (e.g. 'Control+S'). Returns true when consumed;
    * unconsumed chords stay prevented but do nothing (the browser binding is

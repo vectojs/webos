@@ -3,7 +3,7 @@
  */
 
 import { Scene, type Entity } from '@vectojs/core';
-import { DesktopShell, type DesktopWindow } from '@vectojs/desktop';
+import { DesktopShell, DesktopWindow } from '@vectojs/desktop';
 import {
   buildConfig,
   DEFAULT_PRESET,
@@ -249,7 +249,15 @@ document.addEventListener(
       width: icon.width,
       height: icon.height,
     }));
-    const zone = classifyRightClick(pt, shell.windowManager.list(), taskbarRect, iconRects);
+    // Visual stacking order, TOPMOST FIRST (review PX-0222): restack()
+    // reorders only scene.overlayRoot.children (focused window moves to its
+    // end), while windowManager.list() stays CREATION order — classifying
+    // over creation order let the earliest-created window capture clicks
+    // aimed at windows stacked visually above it.
+    const stacked = scene.overlayRoot.children
+      .filter((c): c is DesktopWindow => c instanceof DesktopWindow)
+      .reverse();
+    const zone = classifyRightClick(pt, stacked, taskbarRect, iconRects);
 
     // Any right-click dismisses open launcher chrome first, like a real OS.
     closeStartMenu();
@@ -360,17 +368,30 @@ function cycleWallpaper(): void {
 
 /**
  * ContextMenu key / Shift+F10 (owned chord): open the focused surface's menu
- * at a deterministic anchor just inside its client area; with no surface (or
- * over a Browser window, whose viewport passes through by policy) fall back
- * to the desktop menu anchored in the work area.
+ * at its preferred anchor — surfaces own their keyboard anchor
+ * (keyboardAnchor, review PX-0223); the shell default anchors just inside
+ * the client area below the titlebar. With no surface (or over a Browser
+ * window, whose viewport passes through by policy) fall back to the desktop
+ * menu anchored in the work area.
  */
 function openKeyboardContextMenu(): void {
+  // Same dismissal discipline as the right-click router: launcher chrome
+  // closes before a surface menu opens (review PX-0224).
+  closeStartMenu();
   const win = focusedWindow();
   if (win && !win.minimized && win.appId !== 'browser') {
     const surface = windowSurface(win.windowId);
     if (surface) {
-      const bar = titlebarRect(win);
-      surface.openContextMenu(scene, win.x + Math.min(48, win.width / 2), bar.y + bar.height + 24);
+      const anchor =
+        surface.keyboardAnchor?.() ??
+        (() => {
+          const bar = titlebarRect(win);
+          return {
+            x: win.x + Math.min(48, win.width / 2),
+            y: bar.y + bar.height + 24,
+          };
+        })();
+      surface.openContextMenu(scene, anchor.x, anchor.y);
       return;
     }
   }

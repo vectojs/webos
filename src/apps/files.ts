@@ -449,6 +449,13 @@ export type RenameResult = 'ok' | 'exists' | 'error';
  * A destination that already exists fails with 'exists' instead of clobbering
  * it — the old silent overwrite class of bug (audit #25 P2-D), kept dead.
  * Exported for direct VFS round-trip tests; dirs never reach it (DEC-0029).
+ *
+ * Known crash-window (review PX-0225): process death between
+ * write(destination) and remove(source) strands BOTH copies — a duplicate,
+ * never a loss, because remove(source) runs only after the destination write
+ * succeeded, so the content is always represented somewhere on disk. The
+ * best-effort unwind below covers thrown errors only; Ctrl+R is swallowed
+ * (DEC-0028), but the Ctrl+Shift+R valve or a tab close can still land here.
  */
 export async function renameVfsFile(
   vfs: Vfs,

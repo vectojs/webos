@@ -135,9 +135,14 @@ export class PaintRoot extends Entity {
     });
   }
 
-  /** Completed strokes on the canvas (context menu enable state). */
+  /**
+   * Completed VISIBLE strokes on the canvas (context menu enable state).
+   * Counts exactly what render() draws: it skips sub-2-point strokes
+   * (single-click dots), so counting them let Undo/Clear present themselves
+   * with nothing visible to remove (review PX-0227).
+   */
   public get strokeCount(): number {
-    return this.strokes.length;
+    return this.strokes.filter((s) => s.points.length >= 2).length;
   }
 
   /**

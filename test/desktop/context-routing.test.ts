@@ -2,7 +2,8 @@
  * Right-click zone classification matrix (WEB-0039 / issue #40) — the pure
  * router the shell's document-level capture listener feeds. Pins the Browser
  * viewport passthrough, titlebar vs client split, minimized-window skip,
- * taskbar and desktop-icon suppression.
+ * TOPMOST-FIRST visual stacking order (review PX-0222), taskbar and
+ * desktop-icon suppression.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -63,12 +64,19 @@ describe('classifyRightClick', () => {
     expect(zone.kind).toBe('desktop');
   });
 
-  it('first window in list order wins an overlap', () => {
-    const bottom = win({ appId: 'notes' });
-    const top = win({ appId: 'paint' });
-    const zone = classifyRightClick({ x: 200, y: 200 }, [bottom, top], NO_TASKBAR, NO_ICONS);
+  it('overlap resolves to the TOPMOST window — first in visual stacking order', () => {
+    const under = win({ appId: 'notes' });
+    const over = win({ appId: 'paint' });
+    // Caller contract: windows arrive TOPMOST FIRST (reverse
+    // scene.overlayRoot.children order). The pre-fix router iterated creation
+    // order, so the earliest-OPENED window won overlaps it did not own.
+    const zone = classifyRightClick({ x: 200, y: 200 }, [over, under], NO_TASKBAR, NO_ICONS);
     expect(zone.kind).toBe('window-client');
-    if (zone.kind === 'window-client') expect(zone.window.appId).toBe('notes');
+    if (zone.kind === 'window-client') expect(zone.window.appId).toBe('paint');
+    // Order is load-bearing: flipping the stack flips the winner.
+    const flipped = classifyRightClick({ x: 200, y: 200 }, [under, over], NO_TASKBAR, NO_ICONS);
+    expect(flipped.kind).toBe('window-client');
+    if (flipped.kind === 'window-client') expect(flipped.window.appId).toBe('notes');
   });
 
   it('claims the taskbar band below windows', () => {

@@ -266,8 +266,22 @@ export const notesApp: AppDefinition = {
       return el instanceof HTMLTextAreaElement ? el : null;
     }
 
+    /**
+     * Scene point just inside the editor's top-left. Anchor for any menu open
+     * whose trigger point lies outside the editor rect — right-clicks on the
+     * status line/toolbar used to be swallowed silently there (review
+     * PX-0223), and the shell's ContextMenu-key default anchor lands on the
+     * status line too.
+     */
+    function editorAnchor(): { x: number; y: number } {
+      return area.localToWorld(12, 12);
+    }
+
     registerWindowSurface(ctx.windowId, {
+      keyboardAnchor: editorAnchor,
       openContextMenu: (scene, x, y) => {
+        const el = editorMirror();
+        if (!el) return;
         const local = area.worldToLocal(x, y);
         const inEditor =
           local !== null &&
@@ -275,9 +289,10 @@ export const notesApp: AppDefinition = {
           local.y >= 0 &&
           local.x <= area.width &&
           local.y <= area.height;
-        if (!inEditor) return;
-        const el = editorMirror();
-        if (!el) return;
+        // Dead zones (status/toolbar/gaps) still get the edit menu, anchored
+        // to the editor itself — the shell already preventDefault'd the event,
+        // so a silent return suppressed the native menu AND opened nothing.
+        const anchor = inEditor ? { x, y } : editorAnchor();
         // Clipboard permission denials must not fail silently — the status
         // line carries a transient hint until the next refreshStatus().
         const reportClipboard = (ok: boolean): void => {
@@ -288,8 +303,8 @@ export const notesApp: AppDefinition = {
         };
         showSurfaceMenu(
           scene,
-          x,
-          y,
+          anchor.x,
+          anchor.y,
           buildNotepadEditMenuItems(
             { hasSelection: el.selectionEnd > el.selectionStart },
             {
