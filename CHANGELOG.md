@@ -100,6 +100,14 @@
 
 ### Changed
 
+- Browser: real-site compatibility (#39). The webos-proxy Worker now sends a
+  browser-grade Chrome navigation request (UA + Accept + Accept-Language +
+  Sec-Fetch-\*/Sec-CH-UA\*), so strict sites answer with content instead of
+  anti-bot pages — bilibili.com went from HTTP 412 风控 to its real homepage —
+  and relays the upstream HTTP status. Target-site 4xx/5xx render as honest
+  human copy ("This site blocked the request (HTTP 412)… open this address
+  outside WebOS") instead of ever showing a stripped anti-bot page as content;
+  rate limiting (429) gets its own wait-and-retry message.
 - Browser: proxy fetches abort after 15 s with an explicit timed-out state
   instead of hanging on "Loading…"; superseded navigations cancel their
   in-flight fetch; raw edge payloads (e.g. `error code: 1016`) render as

@@ -53,3 +53,58 @@ export function humanizeProxyError(raw: string): string | null {
   }
   return null;
 }
+
+/**
+ * Target-site failure classification (WEB-0040 / issue #39).
+ *
+ * The proxy forwards the upstream HTTP status alongside the stripped text.
+ * On 403/412-style answers that text is the site's own anti-bot challenge
+ * page and must never be shown as content — the app renders honest copy
+ * instead. English copy throughout; i18n is not wired up in this app yet.
+ */
+
+export type SiteFailureKind = 'site-blocked' | 'site-rate-limited' | 'site-error';
+
+export interface SiteFailure {
+  kind: SiteFailureKind;
+  status: number;
+}
+
+/**
+ * Classify an upstream target-site status carried by the proxy payload;
+ * null when there is nothing to report (success or no status forwarded).
+ */
+export function classifySiteStatus(status: number | undefined): SiteFailure | null {
+  if (typeof status !== 'number' || !Number.isInteger(status) || status < 400) return null;
+  if (status === 403 || status === 412) return { kind: 'site-blocked', status };
+  if (status === 429) return { kind: 'site-rate-limited', status };
+  return { kind: 'site-error', status };
+}
+
+/** Human copy for a classified target-site failure — honest, actionable. */
+export function siteFailureCopy(failure: SiteFailure): string {
+  switch (failure.kind) {
+    case 'site-blocked':
+      return (
+        `This site blocked the request (HTTP ${failure.status}).\n\n` +
+        'Its bot protection rejects automated access — the WebOS browser ' +
+        'fetches pages through a server-side text-mode proxy, which some ' +
+        'sites refuse even when the request looks like a normal browser.\n\n' +
+        'Open this address outside WebOS to view it.'
+      );
+    case 'site-rate-limited':
+      return (
+        `The site is rate-limiting this client (HTTP ${failure.status}).\n\n` +
+        'Too many requests came from the proxy in a short time. Wait a ' +
+        'moment and try again, or open the address outside WebOS.'
+      );
+    case 'site-error':
+      if (failure.status === 404) {
+        return `Nothing lives at this address (HTTP 404). It may have moved or never existed.`;
+      }
+      if (failure.status >= 500) {
+        return `The site's server reported an error (HTTP ${failure.status}). It may be temporarily down.`;
+      }
+      return `The site refused the request (HTTP ${failure.status}).`;
+  }
+}
