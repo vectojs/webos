@@ -34,7 +34,7 @@ function descendants(root: Entity): Entity[] {
   const result: Entity[] = [];
   const visit = (entity: Entity): void => {
     result.push(entity);
-    for (const child of entity.children) visit(child);
+    for (const child of entity.children ?? []) visit(child);
   };
   visit(root);
   return result;
@@ -44,6 +44,9 @@ beforeAll(async () => {
   const rootDiv = document.createElement('div');
   rootDiv.id = 'root';
   document.body.appendChild(rootDiv);
+  // Skip the boot splash (query-param escape hatch, review F4): the suite
+  // must not carry the 900ms mark + 220ms fade on every run.
+  window.location.search = '?nosplash';
   await import('../src/desktop/main');
   // Let the async seed + initial window open settle, then drive frames.
   await new Promise((r) => setTimeout(r, 50));
@@ -61,6 +64,12 @@ describe('boot smoke', () => {
     expect(scene.width).toBeGreaterThan(0);
     expect(shell.taskbar).not.toBeNull();
     expect(shell.windowManager.list().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('?nosplash boots without the splash overlay mounted', () => {
+    const { scene } = api();
+    const names = descendants(scene).map((e) => e.constructor.name);
+    expect(names).not.toContain('Splash');
   });
 
   it('auditScene is clean modulo documented intentional stacking', async () => {

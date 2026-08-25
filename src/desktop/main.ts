@@ -516,7 +516,12 @@ installWebosTaskbar();
 fit();
 scene.start();
 // Era splash over the first paint (spec §4 #8): non-interactive, audit-safe.
-void showBootSplash(scene, getActiveThemeId());
+// ?nosplash skips the ~1.12s mark+fade for tests/benchmarks (query-param
+// convention shared with ?debug); per-era splash art stays deferred
+// (carryctx DEC-0022, webos-docs TODO).
+if (!new URLSearchParams(location.search).has('nosplash')) {
+  void showBootSplash(scene);
+}
 
 const startX = 14;
 const startY = 14;

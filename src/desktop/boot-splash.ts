@@ -2,6 +2,11 @@
  * Boot splash — 900ms era-branded mark before the first shell paint
  * (spec 2026-08-24 §4 gap #8). Non-interactive and never a11y-projected so
  * the audit gate and keyboard flows are unaffected; dissolves via opacity.
+ *
+ * `?nosplash` skips it entirely (same query-param convention as `?debug`)
+ * for tests and perf benches (review F4). Per-era splash ART is deferred
+ * (carryctx DEC-0022, webos-docs TODO): every era shares this mark and
+ * differs only in palette.
  */
 
 import { type IRenderer, type Scene } from '@vectojs/core';
@@ -13,14 +18,12 @@ const FADE_MS = 220;
 
 class Splash extends UIComponent {
   constructor(
-    presetId: string,
     private readonly bg: string,
     private readonly fg: string,
   ) {
     super();
     this.interactive = false;
     this.a11yProjection = 'never';
-    void presetId;
   }
 
   public override isPointInside(): boolean {
@@ -56,9 +59,9 @@ class Splash extends UIComponent {
 }
 
 /** Show the splash on the live scene; resolves once it is fully removed. */
-export function showBootSplash(scene: Scene, presetId: string): Promise<void> {
+export function showBootSplash(scene: Scene): Promise<void> {
   const t = appTheme();
-  const splash = new Splash(presetId, t.menuBg === '#FFFFFF' ? '#F3F3F3' : t.menuBg, t.text);
+  const splash = new Splash(t.menuBg === '#FFFFFF' ? '#F3F3F3' : t.menuBg, t.text);
   scene.add(splash);
   scene.markDirty();
   return new Promise((resolve) => {
