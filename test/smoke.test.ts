@@ -268,6 +268,20 @@ describe('boot smoke', () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it('restores opener focus when a click outside closes the menu', async () => {
+    const { scene, shell } = api();
+    const opener = parkFocusOnTaskbarButton(scene, shell);
+    openMenuThenDropFocusToBody(scene, shell);
+
+    // WEB-0035 defect B: outside-click dismissal runs through the same
+    // closeStartMenu path. Empty-desktop coordinates (no menu, taskbar or
+    // Start-tile hit), so the capture-phase pointerdown observer must dismiss
+    // AND the opener must get focus back.
+    document.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1500, clientY: 300 }));
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('projects disabled browser history controls and focused window state', async () => {
     const { scene, shell } = api();
     for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
