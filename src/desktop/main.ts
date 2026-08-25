@@ -57,8 +57,17 @@ function applyTheme(presetId: string): void {
   setAppTheme(target);
   setIconPreset(target.id);
   // Keep the engine's placement math in sync with the era bar height BEFORE
-  // setTheme — it repositions the taskbar using config.desktop.taskbarHeight.
-  if (boot.config.desktop) boot.config.desktop.taskbarHeight = appTheme().taskbarHeight;
+  // setTheme — it remounts the taskbar from config.desktop.taskbarHeight,
+  // while window clamping reads layout.workArea(), which only follows
+  // DisplayLayout.setTaskbar (review PX-0163: the engine keeps two sources of
+  // truth for the bar height, so an era switch must update both).
+  if (boot.config.desktop) {
+    boot.config.desktop.taskbarHeight = appTheme().taskbarHeight;
+    shell.layout.setTaskbar(
+      appTheme().taskbarHeight,
+      boot.config.desktop.taskbarPosition ?? 'bottom',
+    );
+  }
   shell.setTheme(
     {
       ...target.tokens,
@@ -70,6 +79,9 @@ function applyTheme(presetId: string): void {
   // (composition friction recorded upstream; fails safe if absent).
   installWebosTaskbar();
   closeStartMenu();
+  // The new era's work area may be shorter (taller bar): pull windows parked
+  // near the old bottom edge back inside before the next resize does (PX-0163).
+  clampWindowsToWorkArea();
   persistTheme(target.id);
   scene.markDirty();
 }

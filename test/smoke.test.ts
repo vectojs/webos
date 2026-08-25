@@ -342,4 +342,59 @@ describe('boot smoke', () => {
     webos().applyTheme(DEFAULT_PRESET.id);
     for (const other of [...shell.windowManager.list()]) shell.windowManager.close(other);
   });
+
+  /**
+   * PX-0163 regression: an era switch changes the painted bar height
+   * (config.desktop.taskbarHeight drives remount/placement) but the engine's
+   * work area only follows DisplayLayout.setTaskbar. Both must move together,
+   * or windows clamp against a stale floor and overlap the new bar.
+   */
+  it('syncs the engine work area with the era bar height on theme switch', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+    const area = (): { x: number; y: number; width: number; height: number } =>
+      shell.layout.workArea(shell.layout.primary().id);
+
+    webos().applyTheme('aero'); // 48px bar — same as the happy-dom boot era
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(appTheme().taskbarHeight).toBe(48);
+    expect(area().height).toBe(scene.height - 48);
+    expect(area().y).toBe(0); // bottom-docked
+    // Painted bar and engine usable area agree.
+    expect(shell.taskbar?.height).toBe(48);
+    expect(shell.taskbar?.y).toBe(scene.height - 48);
+
+    webos().applyTheme('aqua'); // 60px bar
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(appTheme().taskbarHeight).toBe(60);
+    expect(area().height).toBe(scene.height - 60);
+    expect(shell.taskbar?.height).toBe(60);
+    expect(shell.taskbar?.y).toBe(scene.height - 60);
+
+    // Restore so later suites boot-state assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    for (const other of [...shell.windowManager.list()]) shell.windowManager.close(other);
+  });
+
+  it('re-clamps windows that a taller era bar would overlap', () => {
+    const { scene, shell } = api();
+    for (const win of [...shell.windowManager.list()]) shell.windowManager.close(win);
+
+    webos().applyTheme('y2k'); // 30px bar — shortest era
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    const win = shell.open('calculator');
+    const height = 280;
+    // Legal under y2k: the bottom edge rests exactly on the old work-area floor.
+    win.setGeometry(scene.width - 250, scene.height - 30 - height, 240, height);
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(win.y + win.height).toBe(scene.height - 30);
+
+    webos().applyTheme('aqua'); // 60px bar — the parked window now overlaps it
+    for (let i = 0; i < 2; i++) scene.step(16.67);
+    expect(win.y + win.height).toBeLessThanOrEqual(scene.height - 60);
+
+    // Restore so later suites boot-state assumptions stay stable.
+    webos().applyTheme(DEFAULT_PRESET.id);
+    shell.windowManager.close(win);
+  });
 });
