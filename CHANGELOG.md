@@ -11,8 +11,12 @@
   per-era indicator, tray cluster, two-line clock)
 - Searchable start menu (search field, 6-column pinned grid, recents,
   footer); y2k era gets cascading program groups instead
-- Desktop right-click context menu; 900ms boot splash
-- Per-era icon treatments with live re-skin on theme switch
+- Desktop right-click context menu; 900ms boot splash, skippable with
+  `?nosplash` (same query-param convention as `?debug`) for tests and
+  benchmarks
+- Per-era icon treatments with live re-skin on theme switch — including the
+  Material-era drop shadow, which now actually renders from a filter on the
+  icon's painted group
 - Refreshed wallpaper art for all 7 eras (inline SVG + CDN, byte-identical)
 
 ### Changed
@@ -23,6 +27,12 @@
   contrast contract green (16 values across all 7 presets); each deviation
   from spec §3.2 fails its floor at the proposed value — see the preset
   files and carryctx DEC-0017/0018.
+
+### Fixed
+
+- Vaporwave title glow overdraws and hex-colored fake-elevation shadow
+  layers render with real alpha falloff instead of full opacity: hex color
+  tokens now run through shared chrome color math (`src/chrome/color.ts`).
 
 ### Added
 
